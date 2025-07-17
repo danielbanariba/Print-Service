@@ -38,7 +38,7 @@ rendered_html = template.render(dat=payload)
 print(rendered_html)
 
 # Save the rendered HTML to a file
-with open('output.html', 'w') as f:
+with open('output.html', 'w', encoding='utf-8') as f:
     f.write(rendered_html)
 
 # Create the data structure to be sent
@@ -83,7 +83,7 @@ print("\n")
 print(rendered_html_copy)
 
 # Save the rendered HTML copy to a file
-with open('output_copy.html', 'w') as f:
+with open('output_copy.html', 'w', encoding='utf-8') as f:
     f.write(rendered_html_copy)
 
 # Create the data structure to be sent for the copy
