@@ -1,0 +1,113 @@
+{
+    "id": 8,
+    "payload": {
+        "orden": "00010126101490",
+        "direccion": "Calle principal colonia tres caminos",
+        "telefono": "2276-1800",
+        "telefono_cliente": "87325557",
+        "email": "info@labanaliza.com",
+        "cai": "1F8A5D-A106A7-1995E0-63BE03-09091D-A4",
+        "vence": "2025-08-12",
+        "desde": "000-001-01-00096112",
+        "hasta": "000-001-01-00106100",
+        "factura": "000-001-01-00096908",
+        "factura_aseguradora": "000-001-01-00096909",
+        "fecha_nacimiento": "1986-05-20",
+        "sucursal": "TEG - Tres Caminos",
+        "tipo": "COPIA: REIMPRESION",
+        "palabras": "OCHOCIENTOS VEINTIDÓS LEMPIRAS CON TREINTA Y SEIS CENTAVOS",
+        "fecha": "2025-03-12",
+        "cajero": "lmajano",
+        "hora": "15:02:39.234620",
+        "cliente_nombre": "Seguros del Pais",
+        "genero": "M",
+        "identidad": "00010125100766",
+        "paciente": "Orlin Ariel Corea Garcia",
+        "identidad_paciente": "1701198600717",
+        "forma_pago": "Contado",
+        "examenes": [
+            {
+                "id": "EG00093",
+                "examen": "E.G.H - Examen General Heces",
+                "tipo": "E",
+                "subtotal": 69.3,
+                "cantidad": null,
+                "descuento": 0,
+                "impuesto": 0,
+                "total": 69.3
+            },
+            {
+                "id": "COL00062",
+                "examen": "Colesterol Total",
+                "tipo": "E",
+                "subtotal": 129.36,
+                "cantidad": null,
+                "descuento": 0,
+                "impuesto": 0,
+                "total": 129.36
+            },
+            {
+                "id": "TRI000194",
+                "examen": "Triglicéridos",
+                "tipo": "E",
+                "subtotal": 146.3,
+                "cantidad": null,
+                "descuento": 0,
+                "impuesto": 0,
+                "total": 146.3
+            },
+            {
+                "id": "ACI0002",
+                "examen": "Ácido Úrico",
+                "tipo": "E",
+                "subtotal": 123.2,
+                "cantidad": null,
+                "descuento": 0,
+                "impuesto": 0,
+                "total": 123.2
+            },
+            {
+                "id": "GLU000111",
+                "examen": "Glucosa en ayunas",
+                "tipo": "E",
+                "subtotal": 77,
+                "cantidad": null,
+                "descuento": 0,
+                "impuesto": 0,
+                "total": 77
+            },
+            {
+                "id": "HDL000116",
+                "examen": "HDL - Colesterol Alta Densidad",
+                "tipo": "E",
+                "subtotal": 130.9,
+                "cantidad": null,
+                "descuento": 0,
+                "impuesto": 0,
+                "total": 130.9
+            },
+            {
+                "id": "LDL000138",
+                "examen": "LDL - Colesterol Baja Densidad",
+                "tipo": "E",
+                "subtotal": 146.3,
+                "cantidad": null,
+                "descuento": 0,
+                "impuesto": 0,
+                "total": 146.3
+            }
+        ],
+        "subtotal": 822.36,
+        "total_exento": 0,
+        "total_no_sujeto": 0,
+        "descuento": 0,
+        "impuesto": 0,
+        "total": 822.36,
+        "aseguradora_codigo": 1,
+        "tasa_descuento_aseguradora": 0.3,
+        "total_cliente": 234.96,
+        "credito_aseguradora": 587.4,
+        "palabras_aseguradora": "MIL CIENTO SETENTA Y CUATRO LEMPIRAS CON OCHENTA CENTAVOS",
+        "estudio_informado": "NO"
+    }
+}
