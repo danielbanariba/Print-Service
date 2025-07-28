@@ -242,7 +242,7 @@ class PrintService:
                 traceback.print_exc()
 
         def imprimir_etiqueta(contenido, impresora):
-            """Imprime etiquetas en formato TSPL con posicionamiento corregido"""
+            """Imprime etiquetas en formato TSPL con posicionamiento y estructura corregidos"""
             self.log(f"Iniciando trabajo de impresión de ETIQUETA para: '{impresora}'")
             
             try:
@@ -251,18 +251,26 @@ class PrintService:
                 if isinstance(contenido, list):
                     self.log("Contenido detectado como DATOS (lista JSON). Construyendo etiqueta TSPL...")
                     
+                    # SOLUCIÓN CLAVE #1: Configuración FUERA del bucle para evitar reinicios
                     tspl_commands = []
                     
-                    # 🎯 CONFIGURACIÓN CORREGIDA: 320x200 (40x25mm a 203dpi)
-                    tspl_commands.append("SIZE 320, 200")
-                    tspl_commands.append("GAP 24, 0")
+                    # Usar tamaño en mm para mejor compatibilidad
+                    tspl_commands.append("SIZE 40 mm, 25 mm")
+                    tspl_commands.append("GAP 3 mm, 0 mm")
+                    tspl_commands.append("REFERENCE 0,0")  # Punto de referencia en esquina superior izquierda
                     tspl_commands.append("DIRECTION 1")
                     tspl_commands.append("DENSITY 12")
                     tspl_commands.append("SPEED 3")
                     tspl_commands.append("SET TEAR ON")
                     
+                    # SOLUCIÓN CLAVE #2: CLS solo una vez antes del bucle
+                    tspl_commands.append("CLS")
+                    
                     for idx, item in enumerate(contenido):
-                        tspl_commands.append("CLS")
+                        # Si hay múltiples etiquetas, agregar comando de nueva etiqueta
+                        if idx > 0:
+                            tspl_commands.append("PRINT 1")  # Imprimir etiqueta anterior
+                            tspl_commands.append("CLS")      # Limpiar para siguiente
                         
                         nombre = str(item.get("nombre", "")).strip()
                         orden = str(item.get("orden", "")).strip()
@@ -270,40 +278,45 @@ class PrintService:
                         genero = str(item.get("genero", "")).strip()
                         edad = str(item.get("edad", "")).strip()
                         
-                        self.log(f" - Construyendo etiqueta {idx+1} (POSICIÓN CORREGIDA): orden={orden}, paciente={nombre}")
+                        self.log(f" - Construyendo etiqueta {idx+1}: orden={orden}, paciente={nombre}")
                         
-                        # 🎯 LAYOUT CORREGIDO BASADO EN DETECCIÓN AUTOMÁTICA:
-                        # left_align: 120, center_align: 160, right_align: 240
+                        # SOLUCIÓN CLAVE #3: Valores Y optimizados sin offset negativo
+                        # Comenzar desde Y=10 para respetar margen superior
+                        y_base = 10  # Margen superior seguro
                         
-                        # Área - CORREGIDO X=25 → X=120
+                        # Área - Primera línea
                         if area:
-                            tspl_commands.append(f'TEXT 120,15,"1",0,1,1,"{area}"')
+                            # Limitar longitud del área para evitar desbordamiento
+                            area_corta = area[:30]
+                            tspl_commands.append(f'TEXT 120,{y_base},"1",0,1,1,"{area_corta}"')
                         
-                        # Nombre - CORREGIDO X=25 → X=120
+                        # Nombre - Segunda línea
                         if nombre:
                             nombre_corto = nombre[:27]
-                            tspl_commands.append(f'TEXT 120,40,"2",0,1,1,"{nombre_corto}"')
+                            tspl_commands.append(f'TEXT 120,{y_base + 20},"2",0,1,1,"{nombre_corto}"')
                         
-                        # Edad y Género - POSICIONES CORREGIDAS
+                        # Edad y Género - Tercera línea
                         if edad or genero:
                             if edad and not edad.endswith('A'):
                                 edad_formateada = f"{edad} A"
                             else:
                                 edad_formateada = edad
                             
-                            # Edad - CORREGIDO X=25 → X=120
+                            # Edad alineada a la izquierda
                             if edad_formateada:
-                                tspl_commands.append(f'TEXT 120,65,"2",0,1,1,"Edad: {edad_formateada}"')
+                                tspl_commands.append(f'TEXT 120,{y_base + 40},"2",0,1,1,"Edad: {edad_formateada}"')
                             
-                            # Género - CORREGIDO X=160 → X=240 (ahora sí está dentro del área)
+                            # Género alineado a la derecha
                             if genero:
-                                tspl_commands.append(f'TEXT 240,65,"2",0,1,1,"Genero: {genero}"')
+                                tspl_commands.append(f'TEXT 240,{y_base + 40},"2",0,1,1,"Genero: {genero}"')
                         
-                        # Código de barras - CORREGIDO X=25 → X=120
+                        # Código de barras - Cuarta línea
                         if orden:
-                            tspl_commands.append(f'BARCODE 120,100,"128",45,1,0,2,2,"{orden}"')
-                        
-                        tspl_commands.append("PRINT 1,1")
+                            # SOLUCIÓN CLAVE #4: Ajustar altura del código de barras para que quepa
+                            tspl_commands.append(f'BARCODE 120,{y_base + 60},"128",40,1,0,2,2,"{orden}"')
+                    
+                    # SOLUCIÓN CLAVE #5: Un solo PRINT al final
+                    tspl_commands.append("PRINT 1")
                     
                     new_contenido = "\n".join(tspl_commands) + "\n"
                     
@@ -318,20 +331,21 @@ class PrintService:
                     self.log(f"ERROR: Tipo de contenido no soportado: {type(contenido)}")
                     return
                 
-                self.log(f"CONTENIDO FINAL CORREGIDO A IMPRIMIR en '{impresora}':")
-                self.log(f"---INICIO CONTENIDO CORREGIDO---")
+                self.log(f"CONTENIDO FINAL A IMPRIMIR en '{impresora}':")
+                self.log(f"---INICIO CONTENIDO---")
                 self.log(new_contenido[:500] + "..." if len(new_contenido) > 500 else new_contenido)
-                self.log(f"---FIN CONTENIDO CORREGIDO---")
+                self.log(f"---FIN CONTENIDO---")
                 
                 if WINDOWS and new_contenido:
+                    # SOLUCIÓN CLAVE #6: Enviar todo como un único trabajo de impresión
                     p = win32print.OpenPrinter(impresora)
-                    win32print.StartDocPrinter(p, 1, ("Label Job CORRECTED", None, "RAW"))
+                    win32print.StartDocPrinter(p, 1, ("Label Job", None, "RAW"))
                     win32print.StartPagePrinter(p)
                     win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
                     win32print.EndPagePrinter(p)
                     win32print.EndDocPrinter(p)
                     win32print.ClosePrinter(p)
-                    self.log(f"✅ Trabajo de etiqueta enviado exitosamente con POSICIONAMIENTO CORREGIDO.")
+                    self.log(f"✅ Trabajo de etiqueta enviado exitosamente.")
                     
             except Exception as e:
                 self.log(f"ERROR en 'imprimir_etiqueta': {str(e)}")
