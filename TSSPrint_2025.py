@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import socket
 import json
 import time
@@ -25,21 +24,18 @@ class PrintService:
 
     def log(self, msg):
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {str(msg)}")
-  
+
     def start(self):
         self.running = True
-        self.log("Starting print service...")
         self.main()
-    
+
     def stop(self):
         self.running = False
-        self.log("Stopping print service...")
         for server in self.servers:
             try:
                 server.shutdown()
             except:
                 pass
-        self.log("Print service stopped")
     
     def limpiar_texto_utf8(self, texto):
         """Limpia caracteres problemáticos UTF-8 para impresoras térmicas"""
@@ -65,15 +61,12 @@ class PrintService:
     
     def convertir_escpos_a_tspl(self, contenido):
         """Convierte comandos ESC/POS a TSPL para impresoras de etiquetas"""
-        # 🎯 CONFIGURACIÓN CORREGIDA: Usar 320x200 con posiciones optimizadas
         tspl = "SIZE 320, 200\n"
         tspl += "GAP 24, 0\n"
         tspl += "DIRECTION 1\n"
         tspl += "CLS\n\n"
         
-        y_position = 30
         font_size = "2"
-        bold = False
         align = "left"
         
         lineas = contenido.split('<NL>')
@@ -83,10 +76,8 @@ class PrintService:
             
             # Detectar formatos
             if '<NEGRITA>' in texto:
-                bold = True
                 texto = texto.replace('<NEGRITA>', '')
             if '<NO_NEGRITA>' in texto:
-                bold = False
                 texto = texto.replace('<NO_NEGRITA>', '')
             
             if '<TXT_4SQUARE>' in texto:
@@ -112,9 +103,8 @@ class PrintService:
                 match = re.search(r'<BARCODE_CODE39>\*(.*?)\*$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    # 🎯 POSICIÓN CORREGIDA: X=120 en lugar de 50
-                    tspl += f'BARCODE 120,{y_position},"39",50,1,0,2,2,"{barcode_data}"\n'
-                    y_position += 80
+                    # 120 es la posición del código de barras
+                    tspl += f'BARCODE 120,"39",50,1,0,2,2,"{barcode_data}"\n'
                 continue
             
             # Detectar código de barras EAN13
@@ -122,9 +112,8 @@ class PrintService:
                 match = re.search(r'<BARCODE_EAN13>(\d+)$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    # 🎯 POSICIÓN CORREGIDA: X=120 en lugar de 50
-                    tspl += f'BARCODE 120,{y_position},"EAN13",50,1,0,2,2,"{barcode_data}"\n'
-                    y_position += 80
+                    # 120 es la posición del código de barras
+                    tspl += f'BARCODE 120,"EAN13",50,1,0,2,2,"{barcode_data}"\n'
                 continue
             
             # Limpiar etiquetas restantes
@@ -138,16 +127,14 @@ class PrintService:
             if texto:
                 texto = self.limpiar_texto_utf8(texto)
                 
-                # 🎯 POSICIONES CORREGIDAS BASADAS EN DETECCIÓN AUTOMÁTICA:
                 # left_align: 120, center_align: 160, right_align: 240
-                x_pos = 120  # Era 50 - CORREGIDO
+                x_pos = 120
                 if align == "center":
-                    x_pos = 160  # Era 200 - CORREGIDO
+                    x_pos = 160
                 elif align == "right":
-                    x_pos = 240  # Era 350 - CORREGIDO
+                    x_pos = 240
                 
-                tspl += f'TEXT {x_pos},{y_position},"{font_size}",0,1,1,"{texto}"\n'
-                y_position += 30
+                tspl += f'TEXT {x_pos},"{font_size}",0,1,1,"{texto}"\n'
         
         tspl += "\nPRINT 1\n"
         return tspl
@@ -284,7 +271,7 @@ class PrintService:
                         y_base = 10  # Margen superior
                         
                         # Margen izquierdo
-                        x_base = 10
+                        x_base = 1
                         
                         # Área - Primera línea
                         if area:
@@ -400,8 +387,6 @@ class PrintService:
             thread.start()
             threads.append(thread)
         
-        self.log("All servers running with CORRECTED POSITIONING. Press Ctrl+C to stop.")
-        
         try:
             while self.running:
                 time.sleep(1)
@@ -413,34 +398,11 @@ class PrintService:
 if __name__ == '__main__':
     print("""
     ╔═══════════════════════════════════════════════════════╗
-    ║      TSSPrint Service - POSICIONAMIENTO CORREGIDO     ║
-    ║         ESC/POS + TSPL Support FIXED                  ║
+    ║            ESC/POS + TSPL Support FIXED               ║
     ║             Version: 2025-POSITION-FIXED              ║
     ╚═══════════════════════════════════════════════════════╝
     """)
     
-    print("🎯 CORRECCIONES APLICADAS BASADAS EN DETECCIÓN AUTOMÁTICA:")
-    print("  ✅ Área:     X=25  → X=120  (centrado)")
-    print("  ✅ Nombre:   X=25  → X=120  (centrado)")
-    print("  ✅ Edad:     X=25  → X=120  (centrado)")
-    print("  ✅ Género:   X=160 → X=240  (dentro del área)")
-    print("  ✅ Código:   X=25  → X=120  (centrado)")
-    print("  ✅ Tamaño:   320x200 dots (40x25mm optimizado)")
-    print("")
-    print("📏 POSICIONES DETECTADAS AUTOMÁTICAMENTE:")
-    print("  - Izquierda: X=120 (left_align)")
-    print("  - Centro:    X=160 (center_align)")
-    print("  - Derecha:   X=240 (right_align)")
-    print("")
-    print("🖨️  IMPRESORAS SOPORTADAS:")
-    print("  - TERMICA: POS-80 (ESC/POS)")
-    print("  - ETIQUETA: 4BARCODE 4B-2054L (TSPL)")
-    print("")
-    
     print_service = PrintService()
     
-    try:
-        print_service.start()
-    except KeyboardInterrupt:
-        print("\nShutting down...")
-        print_service.stop()
+    print_service.start()
