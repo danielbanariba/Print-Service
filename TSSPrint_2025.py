@@ -280,47 +280,48 @@ class PrintService:
                         
                         self.log(f" - Construyendo etiqueta {idx+1}: orden={orden}, paciente={nombre}")
                         
-                        # SOLUCIÓN CLAVE #3: Valores Y optimizados sin offset negativo
-                        # Comenzar desde Y=10 para respetar margen superior
-                        y_base = 10  # Margen superior seguro
+                        # Posiciones Y optimizadas para mejor aprovechamiento del espacio
+                        y_base = 10  # Margen superior
                         
-                        # SOLUCIÓN CLAVE #3.1: Coordenadas X corregidas para alineación izquierda
-                        x_base = 10  # Margen izquierdo de 10 dots (1.25mm aprox)
+                        # Margen izquierdo
+                        x_base = 10
                         
                         # Área - Primera línea
                         if area:
-                            # Limitar longitud del área para evitar desbordamiento
                             area_corta = area[:30]
-                            tspl_commands.append(f'TEXT {x_base},{y_base},"1",0,1,1,"{area_corta}"')
+                            tspl_commands.append(f'TEXT {x_base},{y_base},"2",0,1,1,"{area_corta}"')
                         
                         # Nombre - Segunda línea
                         if nombre:
-                            nombre_corto = nombre[:27]
-                            tspl_commands.append(f'TEXT {x_base},{y_base + 20},"2",0,1,1,"{nombre_corto}"')
+                            nombre_corto = nombre[:30]
+                            tspl_commands.append(f'TEXT {x_base},{y_base + 25},"2",0,1,1,"{nombre_corto}"')
                         
-                        # Edad y Género - Tercera línea
-                        if edad or genero:
-                            if edad and not edad.endswith('A'):
+                        # EDAD Y GÉNERO EN UNA SOLA LÍNEA
+                        linea_edad_genero = ""
+                        if edad:
+                            if not edad.endswith(' A'):
                                 edad_formateada = f"{edad} A"
                             else:
                                 edad_formateada = edad
-                            
-                            # Edad alineada a la izquierda
-                            if edad_formateada:
-                                tspl_commands.append(f'TEXT {x_base},{y_base + 40},"2",0,1,1,"Edad: {edad_formateada}"')
-                            
-                            # Género - a la derecha de edad (aproximadamente en el centro)
-                            if genero:
-                                tspl_commands.append(f'TEXT 160,{y_base + 40},"2",0,1,1,"Genero: {genero}"')
+                            linea_edad_genero = f"Edad:{edad_formateada}"
                         
-                        # Código de barras - Cuarta línea
+                        if genero:
+                            # Agregar espacios para separar
+                            if linea_edad_genero:
+                                linea_edad_genero += f"     Genero: {genero}"
+                            else:
+                                linea_edad_genero = f"Genero: {genero}"
+                        
+                        if linea_edad_genero:
+                            tspl_commands.append(f'TEXT {x_base},{y_base + 50},"2",0,1,1,"{linea_edad_genero}"')
+                        
+                        # Código de barras
                         if orden:
                             # Formatear la cadena para incluir paréntesis
                             orden_formateado = f"({orden[:2]}){orden[2:]}"
                             
-                            # SOLUCIÓN CLAVE #4: Ajustar altura del código de barras para que quepa
-                            # Código de barras también alineado a la izquierda
-                            tspl_commands.append(f'BARCODE {x_base},{y_base + 60},"128",40,1,0,2,2,"{orden_formateado}"')
+                            # Código de barras con altura apropiada
+                            tspl_commands.append(f'BARCODE {x_base},{y_base + 75},"128",45,1,0,2,2,"{orden_formateado}"')
                     
                     # SOLUCIÓN CLAVE #5: Un solo PRINT al final
                     tspl_commands.append("PRINT 1")
@@ -357,7 +358,7 @@ class PrintService:
             except Exception as e:
                 self.log(f"ERROR en 'imprimir_etiqueta': {str(e)}")
                 traceback.print_exc()
-
+                
         def message_received(client, server, message):
             """Maneja mensajes WebSocket recibidos"""
             try:
