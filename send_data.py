@@ -2,107 +2,150 @@ from jinja2 import Environment, FileSystemLoader
 import json
 import asyncio
 import websockets
+import platform
 
-# Load JSON data
-with open('data.json', encoding='utf-8') as f:
-    data = json.load(f)
+async def detect_port():
+    """Detecta automáticamente qué puerto usar"""
+    ports = [9000, 9001]
+    
+    for port in ports:
+        uri = f"ws://localhost:{port}"
+        try:
+            # Intentar conectar brevemente
+            websocket = await asyncio.wait_for(
+                websockets.connect(uri),
+                timeout=2.0
+            )
+            await websocket.close()
+            print(f"✓ Puerto {port} disponible")
+            return port
+        except:
+            continue
+    
+    print("✗ No se encontró ningún puerto disponible")
+    return None
 
-# Extract the payload
-payload = data['payload']
-
-# Ensure 'subtotal' is a float
-if 'subtotal' in payload:
-    payload['subtotal'] = float(payload['subtotal'])
-
-# Ensure 'credito_aseguradora' is a float
-if 'credito_aseguradora' in payload:
-    payload['credito_aseguradora'] = float(payload['credito_aseguradora'])
-
-# Ensure 'total_cliente' is a float
-if 'total_cliente' in payload:
-    payload['total_cliente'] = float(payload['total_cliente'])
-
-# Ensure 'descuento' is a float
-if 'descuento' in payload:
-    payload['descuento'] = float(payload['descuento'])
-
-# Set up the Jinja2 environment
-env = Environment(loader=FileSystemLoader('.'))
-
-# Render the template with the JSON data using 'plantila_impresion.html'
-# template_copy = env.get_template('plantila_impresion_copy.html')y
-template = env.get_template('planitlla_final.html')
-rendered_html = template.render(dat=payload)
-
-# Print the rendered HTML
-print(rendered_html)
-
-# Save the rendered HTML to a file
-with open('output.html', 'w', encoding='utf-8') as f:
-    f.write(rendered_html)
-
-# Create the data structure to be sent
-data_to_send = {
-    'contenido': rendered_html,  # Include the rendered HTML content
-    'impresora': 'TERMICA'  # Replace 'TERMICA' with the name of your printer if needed
-}
-
-# Load JSON data for the copy
-with open('data_2.json', encoding='utf-8') as f:
-    data_copy = json.load(f)
-
-# Extract the payload for the copy
-payload_copy = data_copy['payload']
-
-# Ensure 'subtotal' is a float
-if 'subtotal' in payload_copy:
-    payload_copy['subtotal'] = float(payload_copy['subtotal'])
-
-# Ensure 'credito_aseguradora' is a float
-if 'credito_aseguradora' in payload_copy:
-    payload_copy['credito_aseguradora'] = float(payload_copy['credito_aseguradora'])
-
-# Ensure 'total_cliente' is a float
-if 'total_cliente' in payload_copy:
-    payload_copy['total_cliente'] = float(payload_copy['total_cliente'])
-
-# Ensure 'descuento' is a float
-if 'descuento' in payload_copy:
-    payload_copy['descuento'] = float(payload_copy['descuento'])
-
-# Render the template with the JSON data using 'planitlla_final.html'
-# template_copy = env.get_template('plantila_impresion_copy.html')
-template_copy = env.get_template('planitlla_final.html')
-rendered_html_copy = template_copy.render(dat=payload_copy)
-
-# Print the rendered HTML copy
-# print salto de linea
-print("\n")
-print("###########################################################################")
-print("\n")
-print(rendered_html_copy)
-
-# Save the rendered HTML copy to a file
-with open('output_copy.html', 'w', encoding='utf-8') as f:
-    f.write(rendered_html_copy)
-
-# Create the data structure to be sent for the copy
-data_to_send_copy = {
-    'contenido': rendered_html_copy,  # Include the rendered HTML content
-    'impresora': 'TERMICA'  # Replace 'TERMICA' with the name of your printer if needed
-}
-
-# Send the JSON payload to the WebSocket server
-async def send_data():
-    uri = "ws://localhost:9000"
+async def send_to_printer(data, port=None):
+    """Envía datos al servicio de impresión"""
+    if port is None:
+        port = await detect_port()
+        if port is None:
+            raise Exception("No se pudo conectar al servicio de impresión")
+    
+    uri = f"ws://localhost:{port}"
     async with websockets.connect(uri) as websocket:
-        json_payload = json.dumps(data_to_send)  # Convert the data structure to a JSON string
+        json_payload = json.dumps(data)
         await websocket.send(json_payload)
-        # print("Data sent to WebSocket server:", json_payload)
+        return True
 
-        json_payload_copy = json.dumps(data_to_send_copy)  # Convert the data structure to a JSON string
-        await websocket.send(json_payload_copy)
-        # print("Data sent to WebSocket server:", json_payload_copy)
+async def main():
+    print("""
+    ╔═══════════════════════════════════════════════════════╗
+    ║           ENVÍO DE FACTURAS - MULTI-PUERTO            ║
+    ╚═══════════════════════════════════════════════════════╝
+    """)
+    
+    # Detectar sistema operativo
+    os_info = platform.system() + " " + platform.release()
+    print(f"Sistema operativo: {os_info}")
+    
+    # Load JSON data
+    with open('data.json', encoding='utf-8') as f:
+        data = json.load(f)
+
+    # Extract the payload
+    payload = data['payload']
+
+    # Ensure numeric values are floats
+    for key in ['subtotal', 'credito_aseguradora', 'total_cliente', 'descuento']:
+        if key in payload:
+            payload[key] = float(payload[key])
+
+    # Set up the Jinja2 environment
+    env = Environment(loader=FileSystemLoader('.'))
+
+    # Render the template
+    template = env.get_template('planitlla_final.html')
+    rendered_html = template.render(dat=payload)
+
+    print("\n=== FACTURA ORIGINAL ===")
+    print(f"Número de orden: {payload.get('orden', 'N/A')}")
+    print(f"Cliente: {payload.get('cliente_nombre', 'N/A')}")
+    print(f"Total: ${payload.get('total', 0)}")
+
+    # Save the rendered HTML to a file
+    with open('output.html', 'w', encoding='utf-8') as f:
+        f.write(rendered_html)
+
+    # Create the data structure to be sent
+    data_to_send = {
+        'contenido': rendered_html,
+        'impresora': 'TERMICA',
+        'tipo': 'TERMICA'
+    }
+
+    # Load JSON data for the copy
+    with open('data_2.json', encoding='utf-8') as f:
+        data_copy = json.load(f)
+
+    # Extract the payload for the copy
+    payload_copy = data_copy['payload']
+
+    # Ensure numeric values are floats for copy
+    for key in ['subtotal', 'credito_aseguradora', 'total_cliente', 'descuento']:
+        if key in payload_copy:
+            payload_copy[key] = float(payload_copy[key])
+
+    # Render the copy
+    rendered_html_copy = template.render(dat=payload_copy)
+
+    print("\n=== FACTURA COPIA ===")
+    print(f"Número de orden: {payload_copy.get('orden', 'N/A')}")
+    print(f"Cliente: {payload_copy.get('cliente_nombre', 'N/A')}")
+    print(f"Total: ${payload_copy.get('total', 0)}")
+
+    # Save the rendered HTML copy to a file
+    with open('output_copy.html', 'w', encoding='utf-8') as f:
+        f.write(rendered_html_copy)
+
+    # Create the data structure for the copy
+    data_to_send_copy = {
+        'contenido': rendered_html_copy,
+        'impresora': 'TERMICA',
+        'tipo': 'TERMICA'
+    }
+
+    print("\n" + "="*50)
+    print("INICIANDO ENVÍO DE IMPRESIÓN")
+    print("="*50)
+    
+    try:
+        # Detectar puerto disponible
+        port = await detect_port()
+        if port is None:
+            raise Exception("No se pudo detectar el puerto")
+        
+        print(f"\nUsando puerto: {port}")
+        
+        # Enviar primera factura
+        print("\nEnviando factura original...")
+        await send_to_printer(data_to_send, port)
+        print("✓ Factura original enviada")
+        
+        # Pequeña pausa entre impresiones
+        await asyncio.sleep(2)
+        
+        # Enviar copia
+        print("\nEnviando copia de factura...")
+        await send_to_printer(data_to_send_copy, port)
+        print("✓ Copia de factura enviada")
+        
+        print("\n✓ Proceso completado exitosamente!")
+        
+    except Exception as e:
+        print(f"\n✗ Error: {e}")
+        print("\nVerifica que TSSPrint_multiport.py esté ejecutándose")
 
 # Run the async function
-asyncio.get_event_loop().run_until_complete(send_data())
+if __name__ == "__main__":
+    asyncio.run(main())
