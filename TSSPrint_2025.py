@@ -240,7 +240,7 @@ class PrintService:
             except Exception as e:
                 self.log(f"Error printing to thermal printer {impresora}: {str(e)}")
                 traceback.print_exc()
-
+        
         def imprimir_etiqueta(contenido, impresora):
             """Imprime etiquetas en formato TSPL con posicionamiento y estructura corregidos"""
             self.log(f"Iniciando trabajo de impresión de ETIQUETA para: '{impresora}'")
@@ -284,16 +284,19 @@ class PrintService:
                         # Comenzar desde Y=10 para respetar margen superior
                         y_base = 10  # Margen superior seguro
                         
+                        # SOLUCIÓN CLAVE #3.1: Coordenadas X corregidas para alineación izquierda
+                        x_base = 10  # Margen izquierdo de 10 dots (1.25mm aprox)
+                        
                         # Área - Primera línea
                         if area:
                             # Limitar longitud del área para evitar desbordamiento
                             area_corta = area[:30]
-                            tspl_commands.append(f'TEXT 120,{y_base},"1",0,1,1,"{area_corta}"')
+                            tspl_commands.append(f'TEXT {x_base},{y_base},"1",0,1,1,"{area_corta}"')
                         
                         # Nombre - Segunda línea
                         if nombre:
                             nombre_corto = nombre[:27]
-                            tspl_commands.append(f'TEXT 120,{y_base + 20},"2",0,1,1,"{nombre_corto}"')
+                            tspl_commands.append(f'TEXT {x_base},{y_base + 20},"2",0,1,1,"{nombre_corto}"')
                         
                         # Edad y Género - Tercera línea
                         if edad or genero:
@@ -304,16 +307,20 @@ class PrintService:
                             
                             # Edad alineada a la izquierda
                             if edad_formateada:
-                                tspl_commands.append(f'TEXT 120,{y_base + 40},"2",0,1,1,"Edad: {edad_formateada}"')
+                                tspl_commands.append(f'TEXT {x_base},{y_base + 40},"2",0,1,1,"Edad: {edad_formateada}"')
                             
-                            # Género alineado a la derecha
+                            # Género - a la derecha de edad (aproximadamente en el centro)
                             if genero:
-                                tspl_commands.append(f'TEXT 240,{y_base + 40},"2",0,1,1,"Genero: {genero}"')
+                                tspl_commands.append(f'TEXT 160,{y_base + 40},"2",0,1,1,"Genero: {genero}"')
                         
                         # Código de barras - Cuarta línea
                         if orden:
+                            # Formatear la cadena para incluir paréntesis
+                            orden_formateado = f"({orden[:2]}){orden[2:]}"
+                            
                             # SOLUCIÓN CLAVE #4: Ajustar altura del código de barras para que quepa
-                            tspl_commands.append(f'BARCODE 120,{y_base + 60},"128",40,1,0,2,2,"{orden}"')
+                            # Código de barras también alineado a la izquierda
+                            tspl_commands.append(f'BARCODE {x_base},{y_base + 60},"128",40,1,0,2,2,"{orden_formateado}"')
                     
                     # SOLUCIÓN CLAVE #5: Un solo PRINT al final
                     tspl_commands.append("PRINT 1")
