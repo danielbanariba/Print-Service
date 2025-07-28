@@ -65,8 +65,8 @@ class PrintService:
     
     def convertir_escpos_a_tspl(self, contenido):
         """Convierte comandos ESC/POS a TSPL para impresoras de etiquetas"""
-        # Configuración inicial (400x240 dots para etiqueta 50x30mm a 203dpi)
-        tspl = "SIZE 400, 240\n"
+        # 🎯 CONFIGURACIÓN CORREGIDA: Usar 320x200 con posiciones optimizadas
+        tspl = "SIZE 320, 200\n"
         tspl += "GAP 24, 0\n"
         tspl += "DIRECTION 1\n"
         tspl += "CLS\n\n"
@@ -112,7 +112,8 @@ class PrintService:
                 match = re.search(r'<BARCODE_CODE39>\*(.*?)\*$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    tspl += f'BARCODE 50,{y_position},"39",50,1,0,2,2,"{barcode_data}"\n'
+                    # 🎯 POSICIÓN CORREGIDA: X=120 en lugar de 50
+                    tspl += f'BARCODE 120,{y_position},"39",50,1,0,2,2,"{barcode_data}"\n'
                     y_position += 80
                 continue
             
@@ -121,7 +122,8 @@ class PrintService:
                 match = re.search(r'<BARCODE_EAN13>(\d+)$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    tspl += f'BARCODE 50,{y_position},"EAN13",50,1,0,2,2,"{barcode_data}"\n'
+                    # 🎯 POSICIÓN CORREGIDA: X=120 en lugar de 50
+                    tspl += f'BARCODE 120,{y_position},"EAN13",50,1,0,2,2,"{barcode_data}"\n'
                     y_position += 80
                 continue
             
@@ -136,11 +138,13 @@ class PrintService:
             if texto:
                 texto = self.limpiar_texto_utf8(texto)
                 
-                x_pos = 50
+                # 🎯 POSICIONES CORREGIDAS BASADAS EN DETECCIÓN AUTOMÁTICA:
+                # left_align: 120, center_align: 160, right_align: 240
+                x_pos = 120  # Era 50 - CORREGIDO
                 if align == "center":
-                    x_pos = 200
+                    x_pos = 160  # Era 200 - CORREGIDO
                 elif align == "right":
-                    x_pos = 350
+                    x_pos = 240  # Era 350 - CORREGIDO
                 
                 tspl += f'TEXT {x_pos},{y_position},"{font_size}",0,1,1,"{texto}"\n'
                 y_position += 30
@@ -216,7 +220,7 @@ class PrintService:
                 
                 if es_impresora_etiquetas:
                     new_contenido = self.convertir_escpos_a_tspl(contenido)
-                    self.log(f"TSPL print to {impresora}: {len(new_contenido)} bytes")
+                    self.log(f"TSPL print to {impresora} (POSICIÓN CORREGIDA): {len(new_contenido)} bytes")
                 else:
                     new_contenido = reemplazar(contenido)
                     self.log(f"ESC/POS print to {impresora}: {len(new_contenido)} bytes")
@@ -238,7 +242,7 @@ class PrintService:
                 traceback.print_exc()
 
         def imprimir_etiqueta(contenido, impresora):
-            """Imprime etiquetas en formato TSPL"""
+            """Imprime etiquetas en formato TSPL con posicionamiento corregido"""
             self.log(f"Iniciando trabajo de impresión de ETIQUETA para: '{impresora}'")
             
             try:
@@ -249,7 +253,7 @@ class PrintService:
                     
                     tspl_commands = []
                     
-                    # Configuración para etiqueta 40x25mm (320x200 dots a 203dpi)
+                    # 🎯 CONFIGURACIÓN CORREGIDA: 320x200 (40x25mm a 203dpi)
                     tspl_commands.append("SIZE 320, 200")
                     tspl_commands.append("GAP 24, 0")
                     tspl_commands.append("DIRECTION 1")
@@ -266,32 +270,38 @@ class PrintService:
                         genero = str(item.get("genero", "")).strip()
                         edad = str(item.get("edad", "")).strip()
                         
-                        self.log(f" - Construyendo etiqueta {idx+1}: orden={orden}, paciente={nombre}")
+                        self.log(f" - Construyendo etiqueta {idx+1} (POSICIÓN CORREGIDA): orden={orden}, paciente={nombre}")
                         
-                        # Layout optimizado
+                        # 🎯 LAYOUT CORREGIDO BASADO EN DETECCIÓN AUTOMÁTICA:
+                        # left_align: 120, center_align: 160, right_align: 240
+                        
+                        # Área - CORREGIDO X=25 → X=120
                         if area:
-                            tspl_commands.append(f'TEXT 25,15,"1",0,1,1,"{area}"')
+                            tspl_commands.append(f'TEXT 120,15,"1",0,1,1,"{area}"')
                         
+                        # Nombre - CORREGIDO X=25 → X=120
                         if nombre:
                             nombre_corto = nombre[:27]
-                            tspl_commands.append(f'TEXT 25,40,"2",0,1,1,"{nombre_corto}"')
+                            tspl_commands.append(f'TEXT 120,40,"2",0,1,1,"{nombre_corto}"')
                         
-                        # Edad y Género en la misma línea
+                        # Edad y Género - POSICIONES CORREGIDAS
                         if edad or genero:
                             if edad and not edad.endswith('A'):
                                 edad_formateada = f"{edad} A"
                             else:
                                 edad_formateada = edad
                             
+                            # Edad - CORREGIDO X=25 → X=120
                             if edad_formateada:
-                                tspl_commands.append(f'TEXT 25,65,"2",0,1,1,"Edad: {edad_formateada}"')
+                                tspl_commands.append(f'TEXT 120,65,"2",0,1,1,"Edad: {edad_formateada}"')
                             
+                            # Género - CORREGIDO X=160 → X=240 (ahora sí está dentro del área)
                             if genero:
-                                tspl_commands.append(f'TEXT 160,65,"2",0,1,1,"Genero: {genero}"')
+                                tspl_commands.append(f'TEXT 240,65,"2",0,1,1,"Genero: {genero}"')
                         
-                        # Código de barras
+                        # Código de barras - CORREGIDO X=25 → X=120
                         if orden:
-                            tspl_commands.append(f'BARCODE 25,100,"128",45,1,0,2,2,"{orden}"')
+                            tspl_commands.append(f'BARCODE 120,100,"128",45,1,0,2,2,"{orden}"')
                         
                         tspl_commands.append("PRINT 1,1")
                     
@@ -308,17 +318,20 @@ class PrintService:
                     self.log(f"ERROR: Tipo de contenido no soportado: {type(contenido)}")
                     return
                 
-                self.log(f"CONTENIDO FINAL A IMPRIMIR en '{impresora}':\n---\n{new_contenido}\n---")
+                self.log(f"CONTENIDO FINAL CORREGIDO A IMPRIMIR en '{impresora}':")
+                self.log(f"---INICIO CONTENIDO CORREGIDO---")
+                self.log(new_contenido[:500] + "..." if len(new_contenido) > 500 else new_contenido)
+                self.log(f"---FIN CONTENIDO CORREGIDO---")
                 
                 if WINDOWS and new_contenido:
                     p = win32print.OpenPrinter(impresora)
-                    win32print.StartDocPrinter(p, 1, ("Label Job", None, "RAW"))
+                    win32print.StartDocPrinter(p, 1, ("Label Job CORRECTED", None, "RAW"))
                     win32print.StartPagePrinter(p)
                     win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
                     win32print.EndPagePrinter(p)
                     win32print.EndDocPrinter(p)
                     win32print.ClosePrinter(p)
-                    self.log(f"Trabajo de etiqueta enviado exitosamente.")
+                    self.log(f"✅ Trabajo de etiqueta enviado exitosamente con POSICIONAMIENTO CORREGIDO.")
                     
             except Exception as e:
                 self.log(f"ERROR en 'imprimir_etiqueta': {str(e)}")
@@ -365,7 +378,7 @@ class PrintService:
             thread.start()
             threads.append(thread)
         
-        self.log("All servers running. Press Ctrl+C to stop.")
+        self.log("All servers running with CORRECTED POSITIONING. Press Ctrl+C to stop.")
         
         try:
             while self.running:
@@ -378,21 +391,28 @@ class PrintService:
 if __name__ == '__main__':
     print("""
     ╔═══════════════════════════════════════════════════════╗
-    ║      TSSPrint Service - OPTIMIZED VERSION              ║
-    ║         ESC/POS + TSPL Support                         ║
-    ║             Version: 2025-OPTIMIZED                    ║
+    ║      TSSPrint Service - POSICIONAMIENTO CORREGIDO     ║
+    ║         ESC/POS + TSPL Support FIXED                  ║
+    ║             Version: 2025-POSITION-FIXED              ║
     ╚═══════════════════════════════════════════════════════╝
     """)
     
-    print("Impresoras soportadas:")
+    print("🎯 CORRECCIONES APLICADAS BASADAS EN DETECCIÓN AUTOMÁTICA:")
+    print("  ✅ Área:     X=25  → X=120  (centrado)")
+    print("  ✅ Nombre:   X=25  → X=120  (centrado)")
+    print("  ✅ Edad:     X=25  → X=120  (centrado)")
+    print("  ✅ Género:   X=160 → X=240  (dentro del área)")
+    print("  ✅ Código:   X=25  → X=120  (centrado)")
+    print("  ✅ Tamaño:   320x200 dots (40x25mm optimizado)")
+    print("")
+    print("📏 POSICIONES DETECTADAS AUTOMÁTICAMENTE:")
+    print("  - Izquierda: X=120 (left_align)")
+    print("  - Centro:    X=160 (center_align)")
+    print("  - Derecha:   X=240 (right_align)")
+    print("")
+    print("🖨️  IMPRESORAS SOPORTADAS:")
     print("  - TERMICA: POS-80 (ESC/POS)")
     print("  - ETIQUETA: 4BARCODE 4B-2054L (TSPL)")
-    print("")
-    print("Optimizaciones aplicadas:")
-    print("  ✓ Eliminado código no utilizado de impresoras de impacto")
-    print("  ✓ Eliminados comandos ESC/POS no utilizados")
-    print("  ✓ Simplificada la estructura del código")
-    print("  ✓ Mantenida toda la funcionalidad activa")
     print("")
     
     print_service = PrintService()
