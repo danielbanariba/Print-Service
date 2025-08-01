@@ -1,0 +1,16 @@
+Impresora: ETIQUETA
+Fecha: 2025-07-31 14:50:34
+Contenido enviado:
+==================================================
+SIZE 40 mm, 25 mm
+GAP 3 mm, 0 mm
+DIRECTION 1
+DENSITY 12
+SPEED 3
+CLS
+TEXT 40,10,"2",0,1,1,"Quimica e Inmunologia"
+TEXT 40,35,"2",0,1,1,"Orlin Ariel Corea Garcia"
+TEXT 40,60,"2",0,1,1,"Edad: 39 A  Genero: M"
+BARCODE 40,85,"128",45,1,0,2,2,"(00)0166260848401"
+PRINT 1
+==================================================

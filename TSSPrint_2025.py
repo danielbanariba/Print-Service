@@ -4,6 +4,7 @@ import time
 import re
 import threading
 import traceback
+import platform
 
 from websocket_server import WebsocketServer
 
@@ -21,6 +22,19 @@ class PrintService:
         self.running = False
         self.servers = []
         socket.setdefaulttimeout(60)
+        # Detectar versión de Windows
+        self.windows_version = None
+        if WINDOWS:
+            try:
+                version = platform.version()
+                if '10.0.22' in version or '11.' in version:
+                    self.windows_version = 11
+                else:
+                    self.windows_version = 10
+            except:
+                self.windows_version = 10
+        
+        self.log(f"Sistema detectado: Windows {self.windows_version if WINDOWS else 'No detectado'}")
 
     def log(self, msg):
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {str(msg)}")
@@ -59,6 +73,130 @@ class PrintService:
         
         return texto_limpio
     
+    def es_impresora_tsc(self, nombre_impresora):
+        """Detecta si es una impresora TSC específicamente"""
+        tsc_keywords = ['TSC', 'TE200', 'TE210', 'TTP', 'TDP', 'DA200', 'DA210']
+        return any(keyword in nombre_impresora.upper() for keyword in tsc_keywords)
+    
+    def generar_tspl_tsc_windows11(self, contenido):
+        """Genera TSPL específico para TSC en Windows 11"""
+        tspl_commands = []
+        
+        # Comandos específicos para TSC en Windows 11
+        tspl_commands.append("! 0 200 200 0 1")  # Comando de inicialización TSC
+        tspl_commands.append("WIDTH 320")        # Ancho en dots
+        tspl_commands.append("HEIGHT 200")       # Alto en dots
+        tspl_commands.append("GAP-SENSE")        # Auto-detección de gap
+        tspl_commands.append("SPEED 4")
+        tspl_commands.append("DENSITY 8")
+        tspl_commands.append("DIRECTION 0")      # 0 para TSC
+        tspl_commands.append("REFERENCE 0,0")
+        tspl_commands.append("OFFSET 0")         # Sin offset
+        tspl_commands.append("SHIFT 0")          # Sin desplazamiento
+        tspl_commands.append("CLS")
+        
+        if isinstance(contenido, list):
+            for idx, item in enumerate(contenido):
+                if idx > 0:
+                    tspl_commands.append("PRINT 1,1")
+                    tspl_commands.append("CLS")
+                
+                nombre = str(item.get("nombre", "")).strip()[:30]
+                orden = str(item.get("orden", "")).strip()
+                area = str(item.get("area", "")).strip()[:30]
+                genero = str(item.get("genero", "")).strip()
+                edad = str(item.get("edad", "")).strip()
+                
+                # Coordenadas ajustadas para TSC en Windows 11
+                # TSC usa origen en esquina superior izquierda con offset
+                x_offset = 10  # Offset horizontal para TSC
+                
+                # Área
+                if area:
+                    tspl_commands.append(f'TEXT {x_offset},10,"2",0,1,1,"{area}"')
+                
+                # Nombre
+                if nombre:
+                    tspl_commands.append(f'TEXT {x_offset},35,"2",0,1,1,"{nombre}"')
+                
+                # Edad y género
+                linea_edad_genero = ""
+                if edad:
+                    edad_formateada = f"{edad} A" if not edad.endswith(' A') else edad
+                    linea_edad_genero = f"Edad:{edad_formateada}"
+                
+                if genero:
+                    if linea_edad_genero:
+                        linea_edad_genero += f"     Genero: {genero}"
+                    else:
+                        linea_edad_genero = f"Genero: {genero}"
+                
+                if linea_edad_genero:
+                    tspl_commands.append(f'TEXT {x_offset},60,"2",0,1,1,"{linea_edad_genero}"')
+                
+                # Código de barras
+                if orden:
+                    orden_formateado = f"({orden[:2]}){orden[2:]}"
+                    tspl_commands.append(f'BARCODE {x_offset},85,"128",45,1,0,2,2,"{orden_formateado}"')
+            
+            tspl_commands.append("PRINT 1,1")
+            
+        return "\n".join(tspl_commands) + "\n"
+    
+    def generar_tspl_generico(self, contenido):
+        """Genera TSPL genérico para otras impresoras de etiquetas"""
+        tspl_commands = []
+        
+        # Configuración estándar para impresoras genéricas
+        tspl_commands.append("SIZE 40 mm, 25 mm")
+        tspl_commands.append("GAP 3 mm, 0 mm")
+        tspl_commands.append("DIRECTION 1")
+        tspl_commands.append("DENSITY 12")
+        tspl_commands.append("SPEED 3")
+        tspl_commands.append("CLS")
+        
+        if isinstance(contenido, list):
+            for idx, item in enumerate(contenido):
+                if idx > 0:
+                    tspl_commands.append("PRINT 1")
+                    tspl_commands.append("CLS")
+                
+                nombre = str(item.get("nombre", "")).strip()[:30]
+                orden = str(item.get("orden", "")).strip()
+                area = str(item.get("area", "")).strip()[:30]
+                genero = str(item.get("genero", "")).strip()
+                edad = str(item.get("edad", "")).strip()
+                
+                x_base = 1  # Para impresoras genéricas
+                
+                if area:
+                    tspl_commands.append(f'TEXT {x_base},10,"2",0,1,1,"{area}"')
+                
+                if nombre:
+                    tspl_commands.append(f'TEXT {x_base},35,"2",0,1,1,"{nombre}"')
+                
+                linea_edad_genero = ""
+                if edad:
+                    edad_formateada = f"{edad} A" if not edad.endswith(' A') else edad
+                    linea_edad_genero = f"Edad:{edad_formateada}"
+                
+                if genero:
+                    if linea_edad_genero:
+                        linea_edad_genero += f"     Genero: {genero}"
+                    else:
+                        linea_edad_genero = f"Genero: {genero}"
+                
+                if linea_edad_genero:
+                    tspl_commands.append(f'TEXT {x_base},60,"2",0,1,1,"{linea_edad_genero}"')
+                
+                if orden:
+                    orden_formateado = f"({orden[:2]}){orden[2:]}"
+                    tspl_commands.append(f'BARCODE {x_base},85,"128",45,1,0,2,2,"{orden_formateado}"')
+            
+            tspl_commands.append("PRINT 1")
+            
+        return "\n".join(tspl_commands) + "\n"
+        
     def convertir_escpos_a_tspl(self, contenido):
         """Convierte comandos ESC/POS a TSPL para impresoras de etiquetas"""
         tspl = "SIZE 320, 200\n"
@@ -103,7 +241,6 @@ class PrintService:
                 match = re.search(r'<BARCODE_CODE39>\*(.*?)\*$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    # 120 es la posición del código de barras
                     tspl += f'BARCODE 120,"39",50,1,0,2,2,"{barcode_data}"\n'
                 continue
             
@@ -112,7 +249,6 @@ class PrintService:
                 match = re.search(r'<BARCODE_EAN13>(\d+)$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    # 120 es la posición del código de barras
                     tspl += f'BARCODE 120,"EAN13",50,1,0,2,2,"{barcode_data}"\n'
                 continue
             
@@ -127,7 +263,6 @@ class PrintService:
             if texto:
                 texto = self.limpiar_texto_utf8(texto)
                 
-                # left_align: 120, center_align: 160, right_align: 240
                 x_pos = 120
                 if align == "center":
                     x_pos = 160
@@ -168,8 +303,8 @@ class PrintService:
                 
                 cadena = re.sub(pattern, replace_code39, cadena)
             
-            # Comandos básicos ESC/POS que sí se usan
-            cadena = cadena.replace("<ESC>", "\u001b\u0040")  # Inicializar impresora
+            # Comandos básicos ESC/POS
+            cadena = cadena.replace("<ESC>", "\u001b\u0040")
             cadena = cadena.replace("<NL>", '\n')
             
             # Formato de texto
@@ -189,7 +324,7 @@ class PrintService:
             cadena = cadena.replace("<PAPER_FULL_CUT>", "\u001d\u0056\u0000")
             cadena = cadena.replace("<PAPER_PART_CUT>", "\u001d\u0056\u0001")
             
-            # Códigos de barras básicos
+            # Códigos de barras
             cadena = cadena.replace("<BARCODE_TXT_OFF>", "\u001d\u0048\u0000")
             cadena = cadena.replace("<BARCODE_TXT_BLW>", "\u001d\u0048\u0002")
             cadena = cadena.replace("<BARCODE_HEIGHT>", "\u001d\u0068\u0064")
@@ -207,7 +342,7 @@ class PrintService:
                 
                 if es_impresora_etiquetas:
                     new_contenido = self.convertir_escpos_a_tspl(contenido)
-                    self.log(f"TSPL print to {impresora} (POSICIÓN CORREGIDA): {len(new_contenido)} bytes")
+                    self.log(f"TSPL print to {impresora}: {len(new_contenido)} bytes")
                 else:
                     new_contenido = reemplazar(contenido)
                     self.log(f"ESC/POS print to {impresora}: {len(new_contenido)} bytes")
@@ -229,91 +364,26 @@ class PrintService:
                 traceback.print_exc()
         
         def imprimir_etiqueta(contenido, impresora):
-            """Imprime etiquetas en formato TSPL con posicionamiento y estructura corregidos"""
+            """Imprime etiquetas con detección específica para TSC"""
             self.log(f"Iniciando trabajo de impresión de ETIQUETA para: '{impresora}'")
             
             try:
                 new_contenido = ""
                 
+                # Detectar si es TSC y está en Windows 11
+                es_tsc = self.es_impresora_tsc(impresora)
+                usar_modo_tsc_win11 = es_tsc and self.windows_version == 11
+                
+                if usar_modo_tsc_win11:
+                    self.log(f"Modo TSC Windows 11 activado para: {impresora}")
+                
                 if isinstance(contenido, list):
                     self.log("Contenido detectado como DATOS (lista JSON). Construyendo etiqueta TSPL...")
                     
-                    # SOLUCIÓN CLAVE #1: Configuración FUERA del bucle para evitar reinicios
-                    tspl_commands = []
-                    
-                    # Usar tamaño en mm para mejor compatibilidad
-                    tspl_commands.append("SIZE 40 mm, 25 mm")
-                    tspl_commands.append("GAP 3 mm, 0 mm")
-                    tspl_commands.append("REFERENCE 0,0")  # Punto de referencia en esquina superior izquierda
-                    tspl_commands.append("DIRECTION 1")
-                    tspl_commands.append("DENSITY 12")
-                    tspl_commands.append("SPEED 3")
-                    tspl_commands.append("SET TEAR ON")
-                    
-                    # SOLUCIÓN CLAVE #2: CLS solo una vez antes del bucle
-                    tspl_commands.append("CLS")
-                    
-                    for idx, item in enumerate(contenido):
-                        # Si hay múltiples etiquetas, agregar comando de nueva etiqueta
-                        if idx > 0:
-                            tspl_commands.append("PRINT 1")  # Imprimir etiqueta anterior
-                            tspl_commands.append("CLS")      # Limpiar para siguiente
-                        
-                        nombre = str(item.get("nombre", "")).strip()
-                        orden = str(item.get("orden", "")).strip()
-                        area = str(item.get("area", "")).strip()
-                        genero = str(item.get("genero", "")).strip()
-                        edad = str(item.get("edad", "")).strip()
-                        
-                        self.log(f" - Construyendo etiqueta {idx+1}: orden={orden}, paciente={nombre}")
-                        
-                        # Posiciones Y optimizadas para mejor aprovechamiento del espacio
-                        y_base = 10  # Margen superior
-                        
-                        # Margen izquierdo
-                        x_base = 1
-                        
-                        # Área - Primera línea
-                        if area:
-                            area_corta = area[:30]
-                            tspl_commands.append(f'TEXT {x_base},{y_base},"2",0,1,1,"{area_corta}"')
-                        
-                        # Nombre - Segunda línea
-                        if nombre:
-                            nombre_corto = nombre[:30]
-                            tspl_commands.append(f'TEXT {x_base},{y_base + 25},"2",0,1,1,"{nombre_corto}"')
-                        
-                        # EDAD Y GÉNERO EN UNA SOLA LÍNEA
-                        linea_edad_genero = ""
-                        if edad:
-                            if not edad.endswith(' A'):
-                                edad_formateada = f"{edad} A"
-                            else:
-                                edad_formateada = edad
-                            linea_edad_genero = f"Edad:{edad_formateada}"
-                        
-                        if genero:
-                            # Agregar espacios para separar
-                            if linea_edad_genero:
-                                linea_edad_genero += f"     Genero: {genero}"
-                            else:
-                                linea_edad_genero = f"Genero: {genero}"
-                        
-                        if linea_edad_genero:
-                            tspl_commands.append(f'TEXT {x_base},{y_base + 50},"2",0,1,1,"{linea_edad_genero}"')
-                        
-                        # Código de barras
-                        if orden:
-                            # Formatear la cadena para incluir paréntesis
-                            orden_formateado = f"({orden[:2]}){orden[2:]}"
-                            
-                            # Código de barras con altura apropiada
-                            tspl_commands.append(f'BARCODE {x_base},{y_base + 75},"128",45,1,0,2,2,"{orden_formateado}"')
-                    
-                    # SOLUCIÓN CLAVE #5: Un solo PRINT al final
-                    tspl_commands.append("PRINT 1")
-                    
-                    new_contenido = "\n".join(tspl_commands) + "\n"
+                    if usar_modo_tsc_win11:
+                        new_contenido = self.generar_tspl_tsc_windows11(contenido)
+                    else:
+                        new_contenido = self.generar_tspl_generico(contenido)
                     
                 elif isinstance(contenido, str):
                     if contenido.strip().upper().startswith(('SIZE', 'CLS', 'TEXT', 'BARCODE')):
@@ -326,17 +396,32 @@ class PrintService:
                     self.log(f"ERROR: Tipo de contenido no soportado: {type(contenido)}")
                     return
                 
+                self.log(f"Usando modo: {'TSC Windows 11' if usar_modo_tsc_win11 else 'Genérico'}")
                 self.log(f"CONTENIDO FINAL A IMPRIMIR en '{impresora}':")
                 self.log(f"---INICIO CONTENIDO---")
                 self.log(new_contenido[:500] + "..." if len(new_contenido) > 500 else new_contenido)
                 self.log(f"---FIN CONTENIDO---")
                 
                 if WINDOWS and new_contenido:
-                    # SOLUCIÓN CLAVE #6: Enviar todo como un único trabajo de impresión
+                    # Para TSC en Windows 11, enviar con configuración especial
+                    if usar_modo_tsc_win11:
+                        # Agregar pausa antes de imprimir para TSC
+                        time.sleep(0.1)
+                    
                     p = win32print.OpenPrinter(impresora)
-                    win32print.StartDocPrinter(p, 1, ("Label Job", None, "RAW"))
+                    win32print.StartDocPrinter(p, 1, ("TSC Label Job" if es_tsc else "Label Job", None, "RAW"))
                     win32print.StartPagePrinter(p)
-                    win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
+                    
+                    # Para TSC, enviar en chunks más pequeños si es Windows 11
+                    if usar_modo_tsc_win11:
+                        # Enviar línea por línea para mejor compatibilidad
+                        for line in new_contenido.split('\n'):
+                            if line:
+                                win32print.WritePrinter(p, bytes(line + '\n', 'utf-8'))
+                                time.sleep(0.01)  # Pequeña pausa entre líneas
+                    else:
+                        win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
+                    
                     win32print.EndPagePrinter(p)
                     win32print.EndDocPrinter(p)
                     win32print.ClosePrinter(p)
@@ -398,8 +483,8 @@ class PrintService:
 if __name__ == '__main__':
     print("""
     ╔═══════════════════════════════════════════════════════╗
-    ║            ESC/POS + TSPL Support FIXED               ║
-    ║             Version: 2025-POSITION-FIXED              ║
+    ║         TSC Windows 11 Fix - Print Service            ║
+    ║           Version: 2025-TSC-WIN11-FIX                 ║
     ╚═══════════════════════════════════════════════════════╝
     """)
     

@@ -1,0 +1,4 @@
+Formato que funciona:
+CLS
+TEXT 10,10,1,0,1,1,TEST1
+PRINT 1
