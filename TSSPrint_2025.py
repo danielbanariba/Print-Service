@@ -78,6 +78,11 @@ class PrintService:
         tsc_keywords = ['TSC', 'TE200', 'TE210', 'TTP', 'TDP', 'DA200', 'DA210']
         return any(keyword in nombre_impresora.upper() for keyword in tsc_keywords)
     
+    def es_impresora_3nstar(self, nombre_impresora):
+        """Detecta si es una impresora 3nStar"""
+        nstar_keywords = ['3NSTAR', 'LDT114', 'LDT-114', '3N-STAR']
+        return any(keyword in nombre_impresora.upper() for keyword in nstar_keywords)
+    
     def generar_tspl_tsc_windows11(self, contenido):
         """Genera TSPL específico para TSC en Windows 11"""
         tspl_commands = []
@@ -109,7 +114,7 @@ class PrintService:
                 
                 # Coordenadas ajustadas para TSC en Windows 11
                 # TSC usa origen en esquina superior izquierda con offset
-                x_offset = 10  # Offset horizontal para TSC
+                x_offset = 5  # Offset horizontal para TSC (menos negativo que genérico)
                 
                 # Área
                 if area:
@@ -143,7 +148,7 @@ class PrintService:
             
         return "\n".join(tspl_commands) + "\n"
     
-    def generar_tspl_generico(self, contenido):
+    def generar_tspl_generico(self, contenido, impresora):
         """Genera TSPL genérico para otras impresoras de etiquetas"""
         tspl_commands = []
         
@@ -167,7 +172,8 @@ class PrintService:
                 genero = str(item.get("genero", "")).strip()
                 edad = str(item.get("edad", "")).strip()
                 
-                x_base = 1  # Para impresoras genéricas
+                # Posición X para centrar el contenido
+                x_base = 60  # Posición centrada para etiqueta de 40mm
                 
                 if area:
                     tspl_commands.append(f'TEXT {x_base},10,"2",0,1,1,"{area}"')
@@ -376,6 +382,10 @@ class PrintService:
                 
                 if usar_modo_tsc_win11:
                     self.log(f"Modo TSC Windows 11 activado para: {impresora}")
+                elif self.es_impresora_3nstar(impresora):
+                    self.log(f"Impresora 3nStar detectada: {impresora}")
+                else:
+                    self.log(f"Impresora genérica/TSC detectada: {impresora}")
                 
                 if isinstance(contenido, list):
                     self.log("Contenido detectado como DATOS (lista JSON). Construyendo etiqueta TSPL...")
@@ -383,7 +393,7 @@ class PrintService:
                     if usar_modo_tsc_win11:
                         new_contenido = self.generar_tspl_tsc_windows11(contenido)
                     else:
-                        new_contenido = self.generar_tspl_generico(contenido)
+                        new_contenido = self.generar_tspl_generico(contenido, impresora)  # Pasar nombre de impresora
                     
                 elif isinstance(contenido, str):
                     if contenido.strip().upper().startswith(('SIZE', 'CLS', 'TEXT', 'BARCODE')):
