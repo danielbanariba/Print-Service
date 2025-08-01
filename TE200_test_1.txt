@@ -1,6 +1,0 @@
-SIZE 30, 20
-GAP 2, 0
-CLS
-TEXT 0,0,"2",0,1,1,"PRUEBA1"
-TEXT 0,20,"2",0,1,1,"12345"
-PRINT 1

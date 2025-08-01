@@ -148,7 +148,7 @@ class PrintService:
         tspl_commands = []
         
         # Configuración estándar para impresoras genéricas
-        tspl_commands.append("SIZE 40 mm, 25 mm")
+        tspl_commands.append("SIZE 59 mm, 25 mm")
         tspl_commands.append("GAP 3 mm, 0 mm")
         tspl_commands.append("DIRECTION 1")
         tspl_commands.append("DENSITY 12")
