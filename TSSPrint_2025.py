@@ -5,6 +5,7 @@ import re
 import threading
 import traceback
 import platform
+import sys
 
 from websocket_server import WebsocketServer
 
@@ -490,14 +491,54 @@ class PrintService:
         finally:
             self.stop()
 
-if __name__ == '__main__':
-    print("""
-    ╔═══════════════════════════════════════════════════════╗
-    ║         TSC Windows 11 Fix - Print Service            ║
-    ║           Version: 2025-TSC-WIN11-FIX                 ║
-    ╚═══════════════════════════════════════════════════════╝
-    """)
+# Soporte para servicio Windows
+try:
+    import win32serviceutil
+    import win32service
+    import win32event
+    import servicemanager
     
-    print_service = PrintService()
+    class TSSPrintService(win32serviceutil.ServiceFramework):
+        _svc_name_ = "TSSPrintService"
+        _svc_display_name_ = "TSS Print Service"
+        _svc_description_ = "Servicio de impresión TSC Windows 11 Fix"
+        
+        def __init__(self, args):
+            win32serviceutil.ServiceFramework.__init__(self, args)
+            self.hWaitStop = win32event.CreateEvent(None, 0, 0, None)
+            self.print_service = None
+            
+        def SvcStop(self):
+            self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+            win32event.SetEvent(self.hWaitStop)
+            if self.print_service:
+                self.print_service.stop()
+                
+        def SvcDoRun(self):
+            servicemanager.LogMsg(servicemanager.EVENTLOG_INFORMATION_TYPE,
+                                  servicemanager.PYS_SERVICE_STARTED,
+                                  (self._svc_name_, ''))
+            self.print_service = PrintService()
+            self.print_service.start()
     
-    print_service.start()
+    # Si se ejecuta como servicio Windows
+    if __name__ == '__main__':
+        if len(sys.argv) == 1:
+            servicemanager.Initialize()
+            servicemanager.PrepareToHostSingle(TSSPrintService)
+            servicemanager.StartServiceCtrlDispatcher()
+        else:
+            win32serviceutil.HandleCommandLine(TSSPrintService)
+            
+except ImportError:
+    # Si no está disponible win32service, ejecutar como aplicación normal
+    if __name__ == '__main__':
+        print("""
+        ╔═══════════════════════════════════════════════════════╗
+        ║         TSC Windows 11 Fix - Print Service            ║
+        ║           Version: 2025-TSC-WIN11-FIX                 ║
+        ╚═══════════════════════════════════════════════════════╝
+        """)
+        
+        print_service = PrintService()
+        print_service.start()
