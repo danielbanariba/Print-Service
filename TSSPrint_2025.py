@@ -500,8 +500,8 @@ try:
     
     class TSSPrintService(win32serviceutil.ServiceFramework):
         _svc_name_ = "TSSPrintService"
-        _svc_display_name_ = "TSS Print Service"
-        _svc_description_ = "Servicio de impresión TSC Windows 11 Fix"
+        _svc_display_name_ = "TSSPrint_CRM2_V2"
+        _svc_description_ = "Servicio de impresión para Windows 10 y 11, compatible con TSC, 3nStar y zebra"
         
         def __init__(self, args):
             win32serviceutil.ServiceFramework.__init__(self, args)
