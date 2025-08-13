@@ -136,31 +136,28 @@ class PrintService:
                     y += 25
 
                 if orden:
-                    # Regla solicitada:
-                    # - Escáner: 13 dígitos -> "0001662608484" (equivale a "00" + primeros 11 de los 13 del core)
-                    # - HRI visible: "(00)0166260848401" (muestra AI 00 + 13 dígitos del core)
-                    raw_digits = re.sub(r'[^0-9]', '', str(orden))
-                    core = raw_digits[2:] if raw_digits.startswith('00') else raw_digits
-                    core13 = core[:13]
+                    # Negocio: el sticker debe codificar el número de TUBO.
+                    # Si viene 'tubo' en el item, usarlo. Si no, derivar: tubo = orden + '01'.
+                    order_digits = re.sub(r'[^0-9]', '', str(orden))
+                    tubo_digits = re.sub(r'[^0-9]', '', str(item.get('tubo', '')))
 
-                    # Datos para escaneo (Code128): "00" + primeros 11 del core
-                    if len(core) >= 11:
-                        scan_data = '00' + core[:11]
-                    else:
-                        scan_data = '00' + core
-
-                    # Texto HRI personalizado bajo el código
-                    hri_text = f"(00){core13}" if core13 else ""
+                    if not tubo_digits:
+                        if len(order_digits) == 13:
+                            tubo_digits = order_digits + '01'
+                        elif len(order_digits) == 15 and order_digits.endswith('01'):
+                            tubo_digits = order_digits
+                        else:
+                            # Fallback: si no cumple el patrón esperado, usar orden tal cual
+                            tubo_digits = order_digits
 
                     barcode_height = 45
-                    # Imprimir sin HRI nativo para controlar el texto mostrado
+                    # BARCODE con HRI nativo desactivado (readable=0) y HRI manual debajo.
                     tspl_commands.append(
-                        f'BARCODE {x_left},{y},"128",{barcode_height},0,0,2,2,"{scan_data}"'
+                        f'BARCODE {x_left},{y},"128",{barcode_height},0,0,2,2,"{tubo_digits}"'
                     )
-                    # HRI como texto, debajo del código
-                    if hri_text:
+                    if tubo_digits:
                         tspl_commands.append(
-                            f'TEXT {x_left},{y + barcode_height + 10},"2",0,1,1,"{self.limpiar_texto_utf8(hri_text)}"'
+                            f'TEXT {x_left},{y + barcode_height + 10},"2",0,1,1,"{self.limpiar_texto_utf8(tubo_digits)}"'
                         )
 
             tspl_commands.append("PRINT 1")
