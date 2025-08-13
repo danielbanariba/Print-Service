@@ -29,11 +29,11 @@ class PrintService:
         self.windows_version = None
         if WINDOWS:
             try:
-                build = sys.getwindowsversion().build  # p.ej. 22621, 26100
+                build = sys.getwindowsversion().build
                 self.windows_version = 11 if build >= 22000 else 10
             except Exception:
                 try:
-                    version_str = platform.version()  # p.ej. "10.0.26100"
+                    version_str = platform.version()
                     parts = version_str.split('.')
                     build = int(parts[-1]) if parts and parts[-1].isdigit() else 0
                     self.windows_version = 11 if build >= 22000 else 10
@@ -61,8 +61,8 @@ class PrintService:
         """Limpia caracteres problemáticos UTF-8 para impresoras térmicas/etiquetas."""
         replacements = {
             '–': '-', '—': '-',
-            '“': '"', '”': '"',
-            '‘': "'", '’': "'",
+            '"': '"', '"': '"',
+            ''': "'", ''': "'",
             '…': '...', '°': 'o', '±': '+/-', '×': 'x', '÷': '/',
             '€': 'EUR', '£': 'GBP', '¥': 'YEN', '©': '(c)', '®': '(r)', '™': 'TM',
             '•': '*', '►': '>', '◄': '<', '▲': '^', '▼': 'v'
@@ -136,29 +136,28 @@ class PrintService:
                     y += 25
 
                 if orden:
-                    # Negocio: el sticker debe codificar el número de TUBO.
-                    # Si viene 'tubo' en el item, usarlo. Si no, derivar: tubo = orden + '01'.
+                    # Extraer solo dígitos
                     order_digits = re.sub(r'[^0-9]', '', str(orden))
-                    tubo_digits = re.sub(r'[^0-9]', '', str(item.get('tubo', '')))
-
-                    if not tubo_digits:
-                        if len(order_digits) == 13:
-                            tubo_digits = order_digits + '01'
-                        elif len(order_digits) == 15 and order_digits.endswith('01'):
-                            tubo_digits = order_digits
-                        else:
-                            # Fallback: si no cumple el patrón esperado, usar orden tal cual
-                            tubo_digits = order_digits
-
+                    
+                    # Si el orden no termina en 01, agregarlo
+                    if not order_digits.endswith('01'):
+                        codigo_barras = order_digits + '01'
+                    else:
+                        codigo_barras = order_digits
+                    
                     barcode_height = 45
-                    # BARCODE con HRI nativo desactivado (readable=0) y HRI manual debajo.
+                    
+                    # Código de barras
                     tspl_commands.append(
-                        f'BARCODE {x_left},{y},"128",{barcode_height},0,0,2,2,"{tubo_digits}"'
+                        f'BARCODE {x_left},{y},"128",{barcode_height},0,0,2,2,"{codigo_barras}"'
+                    )                    
+                    # Texto HRI - formato (00) con espacio y sin los primeros 2 ceros
+                    # De "000166260848401" a "(00) 0166260848401"
+                    hri_text = f"(00) {codigo_barras[2:]}"
+                    
+                    tspl_commands.append(
+                        f'TEXT {x_left},{y + barcode_height + 10},"2",0,1,1,"{self.limpiar_texto_utf8(hri_text)}"'
                     )
-                    if tubo_digits:
-                        tspl_commands.append(
-                            f'TEXT {x_left},{y + barcode_height + 10},"2",0,1,1,"{self.limpiar_texto_utf8(tubo_digits)}"'
-                        )
 
             tspl_commands.append("PRINT 1")
 
@@ -218,7 +217,6 @@ class PrintService:
                 if match:
                     barcode_data = match.group(1)
                     x_pos = 120
-                    # Y pos
                     tspl_lines.append(f'BARCODE {x_pos},{current_y},"39",50,1,0,2,2,"{self.limpiar_texto_utf8(barcode_data)}"')
                     current_y += (50 + 10)
                 continue
@@ -445,7 +443,6 @@ class PrintService:
                 self.log(f"Error procesando mensaje: {str(e)}")
                 traceback.print_exc()
 
-        # Configuración de servidores WebSocket
         PORTS = [9000, 9001]
         HOST = "127.0.0.1"
 
@@ -523,12 +520,6 @@ try:
         if len(sys.argv) > 1 and sys.argv[1].lower() in service_cmds:
             win32serviceutil.HandleCommandLine(TSSPrintService)
         elif len(sys.argv) > 1 and sys.argv[1].lower() in console_cmds:
-            print("""
-        ╔═══════════════════════════════════════════════════════╗
-        ║         TSC Windows 11 Fix - Print Service            ║
-        ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚═══════════════════════════════════════════════════════╝
-            """)
             print_service = PrintService()
             print_service.start()
         else:
@@ -541,36 +532,18 @@ try:
             except pywintypes.error as e:
                 # 1063: The service process could not connect to the service controller
                 if getattr(e, 'winerror', None) == 1063 or (hasattr(e, 'args') and e.args and e.args[0] == 1063):
-                    print("""
-        ╔═══════════════════════════════════════════════════════╗
-        ║      Ejecutando en modo consola (no SCM detectado)    ║
-        ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚═══════════════════════════════════════════════════════╝
-                    """)
                     print_service = PrintService()
                     print_service.start()
                 else:
                     raise
             except Exception:
                 # Cualquier otro problema al iniciar como servicio -> consola como fallback seguro
-                print("""
-        ╔═══════════════════════════════════════════════════════╗
-        ║      Ejecutando en modo consola (fallback general)    ║
-        ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚═══════════════════════════════════════════════════════╝
-                """)
                 print_service = PrintService()
                 print_service.start()
 
 except ImportError:
     # Si no está disponible win32service, ejecutar como aplicación normal
     if __name__ == '__main__':
-        print("""
-        ╔═══════════════════════════════════════════════════════╗
-        ║         TSC Windows 11 Fix - Print Service            ║
-        ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚═══════════════════════════════════════════════════════╝
-        """)
 
         print_service = PrintService()
         print_service.start()
