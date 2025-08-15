@@ -1,22 +1,30 @@
+# -*- coding: utf-8 -*-
+import servicemanager
 import socket
+import sys
+import win32service
+import win32serviceutil
+import win32event
 import json
 import time
 import re
 import threading
 import traceback
 import platform
-import sys
+import pywintypes
+import win32print
 
 from websocket_server import WebsocketServer
 
-# Para Windows
+# INSTALAR PAQUETES NECESARIOS ARRIBA IMPORTADOS
+# pip install pywin32
+# pip install websocket-server
+
 try:
-    import win32print
     WINDOWS = True
 except ImportError:
     WINDOWS = False
     print("win32print not available - running in Linux mode")
-
 
 class PrintService:
 
@@ -39,10 +47,9 @@ class PrintService:
                     self.windows_version = 11 if build >= 22000 else 10
                 except Exception:
                     self.windows_version = 10
-        
-        self.log(f"Sistema detectado: Windows {self.windows_version if WINDOWS else 'No detectado'}")
 
     def log(self, msg):
+        servicemanager.LogInfoMsg(str(msg))
         print(f"[{time.strftime('%Y-%m-%d %H:%M:%S')}] {str(msg)}")
 
     def start(self):
@@ -146,19 +153,16 @@ class PrintService:
                 
                 y_pos = 10  # Posición Y inicial
                 
-                # Área (centrada dinámicamente)
                 if area:
                     x_area = self.calcular_posicion_centrada(area, ancho_etiqueta)
                     tspl_commands.append(f'TEXT {x_area},{y_pos},"2",0,1,1,"{self.limpiar_texto_utf8(area)}"')
                     y_pos += 25
                 
-                # Nombre (centrado dinámicamente)
                 if nombre:
                     x_nombre = self.calcular_posicion_centrada(nombre, ancho_etiqueta)
                     tspl_commands.append(f'TEXT {x_nombre},{y_pos},"2",0,1,1,"{self.limpiar_texto_utf8(nombre)}"')
                     y_pos += 25
                 
-                # Edad y género (centrada dinámicamente)
                 linea_edad_genero = ""
                 if edad:
                     # Verificar si ya tiene 'A' al final
@@ -176,7 +180,6 @@ class PrintService:
                     tspl_commands.append(f'TEXT {x_edad_genero},{y_pos},"2",0,1,1,"{self.limpiar_texto_utf8(linea_edad_genero)}"')
                     y_pos += 30  # Un poco más de espacio antes del código
                 
-                # CÓDIGO DE BARRAS - CORRECCIÓN IMPORTANTE DEL BUG
                 if orden:
                     # Extraer solo dígitos
                     order_digits = re.sub(r'[^0-9]', '', str(orden))
@@ -187,7 +190,6 @@ class PrintService:
                     else:
                         codigo_barras = order_digits
                     
-                    # Código de barras SIN PARÉNTESIS (este era el bug!)
                     # Los paréntesis NO van en el código, solo en el texto visible
                     x_barcode = ancho_etiqueta // 2 - 40  # Centro menos offset para código de barras
                     barcode_height = 45
@@ -374,18 +376,12 @@ class PrintService:
                     win32print.EndPagePrinter(p)
                     win32print.EndDocPrinter(p)
                     win32print.ClosePrinter(p)
-                    self.log(f"Print job sent successfully to {impresora}")
-                else:
-                    self.log("Linux thermal printing - implement CUPS or direct device")
                 
             except Exception as e:
                 self.log(f"Error printing to thermal printer {impresora}: {str(e)}")
                 traceback.print_exc()
         
         def imprimir_etiqueta(contenido, impresora):
-            """Imprime etiquetas con centrado dinámico y código de barras corregido"""
-            self.log(f"Iniciando trabajo de impresión de ETIQUETA para: '{impresora}'")
-            
             try:
                 new_contenido = ""
                 
@@ -394,36 +390,19 @@ class PrintService:
                 es_3nstar = self.es_impresora_3nstar(impresora)
                 usar_modo_tsc_win11 = es_tsc and self.windows_version == 11
                 
-                if usar_modo_tsc_win11:
-                    self.log(f"Modo TSC Windows 11 activado para: {impresora}")
-                elif es_3nstar:
-                    self.log(f"Impresora 3nStar detectada: {impresora}")
-                else:
-                    self.log(f"Impresora genérica detectada: {impresora}")
-                
                 if isinstance(contenido, list):
-                    self.log("Contenido detectado como DATOS (lista JSON). Construyendo etiqueta TSPL...")
                     new_contenido = self.generar_tspl_generico(contenido, impresora)
                     
                 elif isinstance(contenido, str):
                     if contenido.strip().upper().startswith(('SIZE', 'CLS', 'TEXT', 'BARCODE')):
-                        self.log("Contenido detectado como comandos TSPL directos.")
                         new_contenido = contenido
                     else:
-                        self.log("Contenido detectado como texto. Procesando...")
                         new_contenido = contenido.replace('\n', '').replace('<NL>', '\n')
                 else:
                     self.log(f"ERROR: Tipo de contenido no soportado: {type(contenido)}")
                     return
                 
-                self.log(f"---INICIO CONTENIDO---")
-                self.log(new_contenido[:500] + "..." if len(new_contenido) > 500 else new_contenido)
-                self.log(f"---FIN CONTENIDO---")
-                
                 if WINDOWS and new_contenido:
-                    # Para TSC en Windows 11, agregar pausa antes
-                    if usar_modo_tsc_win11:
-                        time.sleep(0.1)
                     
                     p = win32print.OpenPrinter(impresora)
                     win32print.StartDocPrinter(p, 1, ("TSC Label Job" if es_tsc else "Label Job", None, "RAW"))
@@ -434,31 +413,24 @@ class PrintService:
                         for line in new_contenido.split('\n'):
                             if line:
                                 win32print.WritePrinter(p, bytes(line + '\n', 'utf-8'))
-                                time.sleep(0.01)  # Pequeña pausa entre líneas
                     else:
                         win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
                     
                     win32print.EndPagePrinter(p)
                     win32print.EndDocPrinter(p)
                     win32print.ClosePrinter(p)
-                    self.log(f"✅ Trabajo de etiqueta enviado exitosamente.")
                     
             except Exception as e:
                 self.log(f"ERROR en 'imprimir_etiqueta': {str(e)}")
                 traceback.print_exc()
                 
         def message_received(client, server, message):
-            """Maneja mensajes WebSocket recibidos"""
-            try:
-                self.log(f"Mensaje recibido del cliente {client['id']} en puerto {server.port}")
-                
-                JSON = json.loads(message)
-                contenido = JSON.get('contenido', '')
-                impresora = JSON.get('impresora', 'TERMICA')
-                tipo = JSON.get('tipo', 'TERMICA').upper()
-                
-                self.log(f"Trabajo de impresión: Tipo={tipo}, Impresora={impresora}")
-                
+            # Descomponer JSON
+            try:                
+                JSON=json.loads(message)
+                contenido=JSON['contenido']
+                impresora=JSON['impresora']
+                tipo = JSON.get('tipo', 'TERMICA').upper()                
                 if tipo == 'TERMICA':
                     imprimir_ter(contenido, impresora)
                 elif tipo in ['ETIQUETA', 'TSC']:
@@ -478,7 +450,7 @@ class PrintService:
             try:
                 server = WebsocketServer(host=HOST, port=port)
             except Exception as e:
-                self.log(f"No se pudo abrir puerto {port}: {e}. Se omite este puerto.")
+                self.log(f"No se pudo abrir puerto {port}: {e}")
                 continue
             server.set_fn_message_received(message_received)
             self.servers.append(server)
@@ -497,33 +469,17 @@ class PrintService:
             threads.append(thread)
         
         try:
-            self.log("=" * 60)
-            self.log("TSSPrint Service - VERSIÓN COMBINADA")
-            self.log("✓ Centrado dinámico para 3nStar")
-            self.log("✓ Código de barras CORREGIDO (sin paréntesis en el código)")
-            self.log("Escuchando en puertos: " + ", ".join(str(s.port) for s in self.servers))
-            self.log("=" * 60)
-            
             while self.running:
                 time.sleep(1)
-        except KeyboardInterrupt:
-            self.log("\nService interrupted by user")
         finally:
             self.stop()
-
-
+        
 # Soporte para servicio Windows
 try:
-    import win32serviceutil
-    import win32service
-    import win32event
-    import servicemanager
-    import pywintypes
-
     class TSSPrintService(win32serviceutil.ServiceFramework):
         _svc_name_ = "TSSPrintService"
         _svc_display_name_ = "TSSPrint_CRM2_V2"
-        _svc_description_ = "Servicio de impresión con centrado dinámico y código de barras corregido"
+        _svc_description_ = "Servicio de impresión para Windows 10 y 11, compatible con TSC, 3nStar y zebra"
 
         def __init__(self, args):
             win32serviceutil.ServiceFramework.__init__(self, args)
@@ -531,7 +487,9 @@ try:
             self.print_service = None
 
         def SvcStop(self):
+            # Decir a la SCM cuando detener el servicio
             self.ReportServiceStatus(win32service.SERVICE_STOP_PENDING)
+            # Detener el evento
             win32event.SetEvent(self.hWaitStop)
             if self.print_service:
                 self.print_service.stop()
@@ -542,8 +500,6 @@ try:
                 servicemanager.PYS_SERVICE_STARTED,
                 (self._svc_name_, '')
             )
-            self.print_service = PrintService()
-            self.print_service.start()
 
     # Si se ejecuta como servicio Windows o en modo consola
     if __name__ == '__main__':
@@ -555,15 +511,6 @@ try:
         if len(sys.argv) > 1 and sys.argv[1].lower() in service_cmds:
             win32serviceutil.HandleCommandLine(TSSPrintService)
         elif len(sys.argv) > 1 and sys.argv[1].lower() in console_cmds:
-            print("""
-╔════════════════════════════════════════════════════════════════╗
-║              TSSPrint Service - VERSIÓN COMBINADA             ║
-║                                                                ║
-║  ✓ Centrado dinámico funcionando en 3nStar                   ║
-║  ✓ Bug del código de barras CORREGIDO                        ║
-║  ✓ Windows 10 y 11 soportados                                ║
-╚════════════════════════════════════════════════════════════════╝
-            """)
             print_service = PrintService()
             print_service.start()
         else:
