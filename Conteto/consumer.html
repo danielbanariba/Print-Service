@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Drucker Kunden</title>
+    <meta name="description" content="">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="">
+</head>
+<body>
+<h2>Ejemplo uso de websocket impresión - Código QR</h2>
+    <form>
+        <div>
+            <label>Número de Documento DTE (Mostrar en QR URL parametro):</label>
+            <input type="text" id="numero_documento" name="numero_documento">
+            <input type="button" value="Enviar" onclick="enviar_mensaje()">
+        </div>
+    </form>
+    
+    <script>
+        const ws = new WebSocket("ws://localhost:9000");
+        
+        function enviar_mensaje(){
+            console.log('Enviando mensaje a websocket..');                
+            //datos de parametros de prueba
+            let dat = {
+                "tipo_dte_abreviatura": "FE",
+                "tipo_dte": "01 - Factura",
+                "num_orden": "20240522-002",
+                "emisor": {
+                    "nit": "06141101181086",
+                    "nrc": "2666243",
+                    "nombre": "LABORATORIOS CENTROAMERICANOS, S.A. DE C.V.",
+                    "codActividad": "86901",
+                    "descActividad": "Servicios de analisis y estudios de diagnostico",
+                    "nombreComercial": "ANALIZA",
+                    "tipoEstablecimiento": "01",
+                    "direccion": {
+                    "departamento": "06",
+                    "municipio": "14",
+                    "complemento": "89 Av. Sur y Paseo General Escalón, edificio Partenope #4525"
+                    },
+                    "telefono": "2536-4000",
+                    "correo": "info@labanaliza.com",
+                    "codEstableMH": null,
+                    "codEstable": "ES01",
+                    "codPuntoVentaMH": null,
+                    "codPuntoVenta": "CAJ2"
+                },
+                "receptor": {
+                    "nrc": null,
+                    "nombre": "Carlos  Ernesto Cornejo Herrera",
+                    "codActividad": "97000",
+                    "descActividad": "Actividad de los hogares en calidad de empleadores de personal domestico",
+                    "direccion": null,
+                    "telefono": "70024973",
+                    "correo": "testfact@labanaliza.com",
+                    "tipoDocumento": "13",
+                    "numDocumento": "01267762-7"
+                },
+                "cod_generacion": "0A6E07FF-5317-443A-B01E-D4BE329E781C",
+                "qr_url": "https://admin.factura.gob.sv/consultaPublica?ambiente=00&codGen=0A6E07FF-5317-443A-B01E-D4BE329E781C&fechaEmi=2024-05-22",
+                "num_control": "DTE-01-ES01CAJ2-000000000000711",
+                "sello_recepcion": "2024BEC3B7337385487996C4F5926105026FJOQ2",
+                "mod_facturacion": "Previo",
+                "tipo_transmision": "Normal",
+                "fecha_hora_generacion": "22/05/2024 11:48:38",
+                "detalles": [
+                    {
+                    "numItem": 1,
+                    "tipoItem": 2,
+                    "numeroDocumento": null,
+                    "cantidad": 1,
+                    "codigo": "FACELE_01",
+                    "codTributo": null,
+                    "uniMedida": 59,                                        
+                    "descripcion": "Pago por servicios medicos",        
+                    "nombre": "Glucosa",                                
+                    "precioUni": 200,
+                    "montoDescu": 0,
+                    "ventaNoSuj": 0,
+                    "ventaExenta": 0,
+                    "ventaGravada": 200,
+                    "tributos": null,
+                    "psv": 0,
+                    "noGravado": 0,
+                    "ivaItem": 23.01
+                    },
+                    {
+                    "numItem": 2,
+                    "tipoItem": 2,
+                    "numeroDocumento": null,
+                    "cantidad": 1,
+                    "codigo": "FACELE_02",
+                    "codTributo": null,
+                    "uniMedida": 40,                                        
+                    "descripcion": "Pago por servicios medicos",    
+                    "nombre": "Acido Aluronico",
+                    "precioUni": 150,
+                    "montoDescu": 0,
+                    "ventaNoSuj": 0,
+                    "ventaExenta": 0,
+                    "ventaGravada": 150,
+                    "tributos": null,
+                    "psv": 0,
+                    "noGravado": 0,
+                    "ivaItem": 15.49
+                    }
+                ],
+                "resumen": {
+                    "totalNoSuj": 0,
+                    "totalExenta": 0,
+                    "totalGravada": 350,
+                    "subTotalVentas": 350,
+                    "descuNoSuj": 0,
+                    "descuExenta": 0,
+                    "descuGravada": 0,
+                    "porcentajeDescuento": 0,
+                    "totalDescu": 0,
+                    "tributos": null,
+                    "subTotal": 350,
+                    "ivaRete1": 0,
+                    "reteRenta": 0,
+                    "montoTotalOperacion": 350,
+                    "totalNoGravado": 0,
+                    "totalPagar": 350,
+                    "totalLetras": "TRECIENTOS CINCUENTA USD",
+                    "totalIva": 38.50,
+                    "saldoFavor": 0,
+                    "condicionOperacion": 1,
+                    "pagos": [
+                    {
+                        "codigo": "01",
+                        "montoPago": 350,
+                        "referencia": null,
+                        "plazo": null,
+                        "periodo": null
+                    }
+                    ],
+                    "numPagoElectronico": null,
+                    "entregado_por": null,
+                    "dui_entregado_por": null,
+                    "recibido_por": null,
+                    "dui_recibido_por": null
+                },
+                "total_iva": 0,
+                "cond_operacion": "Contado",
+                "observaciones": "",
+                "factura_codigo": ""
+            }
+            
+            let numero_documento = document.getElementById("numero_documento").value;
+            let url_codigo_qr = dat.qr_url;
+            let impresora = "TERMICA";
+            let tipo = "TERMICA"; 
+
+/*            let detalles = dat.detalles.map(p => 
+`<TXT_NORMAL>{{p.cantidad}} - {{p.nombre}} - $ {{p.ventaGravada}}<NO_NEGRITA><NL>`).join('');*/
+
+            let contenido = 
+`<ESC><NEGRITA><TXT_NORMAL><TXT_ALIGN_CT>Fecha y hora de generacion:<TXT_NORMAL>
+<TXT_ALIGN_CT>{{dat.fecha_hora_generacion}}<NL><NL><NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Numero de control:<TXT_NORMAL><TXT_FONT_A><TXT_ALIGN_LT>{{dat.emisor.codPuntoVenta}}
+<TXT_2HEIGHT><NEGRITA><TXT_FONT_A><TXT_ALIGN_LT><NL>Cajero:<TXT_NORMAL><TXT_ALIGN_LT> {{dat.receptor.nombre}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_CT>CREDITO FISCAL AL CONTADO
+------------------------------------
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>EMISOR<NL>
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Nombre/Razon social:
+<TXT_NORMAL><TXT_ALIGN_LT>{{dat.emisor.nombre}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>NIT:<NO_NEGRITA> {{dat.emisor.nit}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>NRC:<NO_NEGRITA> {{dat.emisor.nrc}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Telefono:<NO_NEGRITA> {{dat.emisor.telefono}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Correo:<NO_NEGRITA> {{dat.emisor.correo}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Actividad economica:<NO_NEGRITA> {{dat.emisor.descActividad}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Direccion: <NO_NEGRITA>{{dat.emisor.direccion.complemento}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Codigo de generacion:
+<TXT_NORMAL><TXT_ALIGN_LT>{{dat.cod_generacion}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Numero de control:
+<TXT_NORMAL><TXT_ALIGN_LT>{{dat.num_control}}<TXT_ALIGN_CT>
+------------------------------------
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>RECEPTOR<NL>
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Nombre/Razon social:<NO_NEGRITA> {{dat.receptor.nombre}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Documento:<NO_NEGRITA> {{dat.receptor.numDocumento}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Desc Actividad:<NO_NEGRITA> {{dat.receptor.descActividad}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Telefono:<NO_NEGRITA> {{dat.receptor.telefono}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Correo:<NO_NEGRITA> {{dat.receptor.correo}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_CT>Numero de orden: {{dat.num_orden}}
+-----------------------------------
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_CT>Detalles
+<TXT_NORMAL><TXT_FONT_A><TXT_ALIGN_RT>Cantidad          Nombre           Precio
+{% for p in dat.detalles %}<TXT_NORMAL>*
+{{p.cantidad}} - {{p.descripcion}} - $ {{p.ventaGravada}}<NO_NEGRITA><NL>{% endfor %}
+-----------------------------------
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_CT>Resumen
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Subtotal:<NO_NEGRITA> {{dat.resumen.subTotal}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Total IVA:<NO_NEGRITA> {{dat.resumen.totalIva}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Total a pagar:<NO_NEGRITA> {{dat.resumen.totalPagar}}
+<NEGRITA><TXT_FONT_A><TXT_ALIGN_LT>Total en letras:<NO_NEGRITA> {{dat.resumen.totalLetras}}<TXT_ALIGN_CT>
+`;
+//             if (dat.factura_codigo !== '') {
+//                 contenido += `
+// <NL><NL><NEGRITA><TXT_FONT_A><TXT_ALIGN_CT>NUMERO DE FACTURA:
+// <TXT_2HEIGHT><NEGRITA><TXT_FONT_A><TXT_ALIGN_CT><NL><NL><BARCODE_CODE39>*{{dat.factura_codigo}}*<NL>`;
+//             }
+
+            let mensaje = {
+                "impresora": impresora,
+                "contenido": contenido,
+                "tipo": tipo,
+                "url_qr": url_codigo_qr
+            };    
+            
+            ws.send(JSON.stringify(mensaje)); // Aquí se convierte el objeto a JSON antes de enviarlo                 
+            console.log(mensaje);                
+        }                    
+    </script>
+</body>
+</html>

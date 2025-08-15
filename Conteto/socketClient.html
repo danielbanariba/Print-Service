@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulario de URL</title>
+</head>
+<body>
+    <h1>Ingrese los parametros de la URL</h1>
+    <form id="urlForm">
+        <label for="parametros">Parametros:</label>
+        <input type="text" id="parametros" name="parametros">
+        <button type="submit">Enviar</button>
+    </form>
+
+    <script>
+        document.getElementById('urlForm').addEventListener('submit', function(event) {
+            event.preventDefault();
+            var parametros = document.getElementById('parametros').value;
+            enviarParametros(parametros);
+        });
+
+        function enviarParametros(parametros) {
+            fetch('/procesar-url', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ parametros: parametros })
+            })
+            .then(response => {
+                if (response.ok) {
+                    console.log('Parametros enviados con exito');
+                } else {
+                    console.error('Error al enviar los parametros');
+                }
+            })
+            .catch(error => {
+                console.error('Error de red:', error);
+            });
+        }
+    </script>
+</body>
+</html>

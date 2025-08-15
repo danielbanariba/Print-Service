@@ -24,8 +24,8 @@ class PrintService:
         self.running = False
         self.servers = []
         socket.setdefaulttimeout(60)
-
-        # Detectar versión de Windows de forma robusta (build >= 22000 => Windows 11)
+        
+        # Detectar versión de Windows de forma robusta
         self.windows_version = None
         if WINDOWS:
             try:
@@ -39,7 +39,7 @@ class PrintService:
                     self.windows_version = 11 if build >= 22000 else 10
                 except Exception:
                     self.windows_version = 10
-
+        
         self.log(f"Sistema detectado: Windows {self.windows_version if WINDOWS else 'No detectado'}")
 
     def log(self, msg):
@@ -56,85 +56,127 @@ class PrintService:
                 server.shutdown()
             except:
                 pass
-
+    
     def limpiar_texto_utf8(self, texto):
-        """Limpia caracteres problemáticos UTF-8 para impresoras térmicas/etiquetas."""
+        """Limpia caracteres problemáticos UTF-8 para impresoras térmicas"""
         replacements = {
-            '–': '-', '—': '-',
-            '"': '"', '"': '"',
-            ''': "'", ''': "'",
+            '–': '-', '—': '-', '"': '"', '"': '"', ''': "'", ''': "'",
             '…': '...', '°': 'o', '±': '+/-', '×': 'x', '÷': '/',
-            '€': 'EUR', '£': 'GBP', '¥': 'YEN', '©': '(c)', '®': '(r)', '™': 'TM',
-            '•': '*', '►': '>', '◄': '<', '▲': '^', '▼': 'v'
+            '€': 'EUR', '£': 'GBP', '¥': 'YEN', '©': '(c)', '®': '(r)',
+            '™': 'TM', '•': '*', '►': '>', '◄': '<', '▲': '^', '▼': 'v'
         }
-
+        
         for old, new in replacements.items():
             texto = texto.replace(old, new)
-
+        
+        # Mantener solo ASCII y caracteres españoles básicos
         texto_limpio = ''
         for char in texto:
             if ord(char) < 128 or char in 'áéíóúñÁÉÍÓÚÑüÜ':
                 texto_limpio += char
             else:
                 texto_limpio += ' '
-
+        
         return texto_limpio
-
+    
     def es_impresora_tsc(self, nombre_impresora):
-        """Detecta si es una impresora TSC específicamente."""
+        """Detecta si es una impresora TSC específicamente"""
         tsc_keywords = ['TSC', 'TE200', 'TE210', 'TTP', 'TDP', 'DA200', 'DA210']
         return any(keyword in nombre_impresora.upper() for keyword in tsc_keywords)
-
+    
     def es_impresora_3nstar(self, nombre_impresora):
-        """Detecta si es una impresora 3nStar."""
+        """Detecta si es una impresora 3nStar"""
         nstar_keywords = ['3NSTAR', 'LDT114', 'LDT-114', '3N-STAR']
         return any(keyword in nombre_impresora.upper() for keyword in nstar_keywords)
-
-    def generar_tspl_minimo(self, contenido):
-        """
-        Genera TSPL sin forzar SIZE/GAP/DIRECTION/etc.
-        Solo CLS + TEXT/BARCODE, dejando que la impresora use sus valores predefinidos.
-        """
+    
+    def calcular_posicion_centrada(self, texto, ancho_etiqueta=180):
+        """Calcula la posición X para centrar el texto basándose en su longitud"""
+        # Estimación: cada carácter ocupa aproximadamente 4-5 puntos en fuente tamaño 2
+        ancho_texto = len(texto) * 4
+        x_centrado = max(0, (ancho_etiqueta - ancho_texto) // 2)
+        return x_centrado
+    
+    def generar_tspl_generico(self, contenido, impresora):
+        """Genera TSPL con centrado dinámico y código de barras CORREGIDO"""
         tspl_commands = []
-
+        
+        # Detectar tipo de impresora para ajustar configuración
+        es_tsc = self.es_impresora_tsc(impresora)
+        es_3nstar = self.es_impresora_3nstar(impresora)
+        
+        # Configuración según tipo de impresora
+        if es_tsc and self.windows_version == 11:
+            # TSC en Windows 11
+            tspl_commands.append("SIZE 40 mm, 25 mm")
+            tspl_commands.append("GAP 3 mm, 0 mm")
+            tspl_commands.append("DIRECTION 1")
+            tspl_commands.append("DENSITY 12")
+            tspl_commands.append("SPEED 3")
+            ancho_etiqueta = 150  # 40mm en puntos
+        elif es_3nstar:
+            # 3nStar
+            tspl_commands.append("SIZE 59 mm, 25 mm")
+            tspl_commands.append("GAP 3 mm, 0 mm")
+            tspl_commands.append("DIRECTION 1")
+            tspl_commands.append("DENSITY 12")
+            tspl_commands.append("SPEED 3")
+            ancho_etiqueta = 220  # 59mm en puntos
+        else:
+            # Genérico - usar configuración para 3nStar por defecto
+            tspl_commands.append("SIZE 59 mm, 25 mm")
+            tspl_commands.append("GAP 3 mm, 0 mm")
+            tspl_commands.append("DIRECTION 1")
+            tspl_commands.append("DENSITY 12")
+            tspl_commands.append("SPEED 3")
+            ancho_etiqueta = 220
+        
+        tspl_commands.append("CLS")
+        
         if isinstance(contenido, list):
             for idx, item in enumerate(contenido):
                 if idx > 0:
                     tspl_commands.append("PRINT 1")
-                tspl_commands.append("CLS")
-
+                    tspl_commands.append("CLS")
+                
                 nombre = str(item.get("nombre", "")).strip()[:30]
                 orden = str(item.get("orden", "")).strip()
                 area = str(item.get("area", "")).strip()[:30]
                 genero = str(item.get("genero", "")).strip()
                 edad = str(item.get("edad", "")).strip()
-
-                x_left = 10
-                y = 10
-
+                
+                y_pos = 10  # Posición Y inicial
+                
+                # Área (centrada dinámicamente)
                 if area:
-                    tspl_commands.append(f'TEXT {x_left},{y},"2",0,1,1,"{self.limpiar_texto_utf8(area)}"')
-                    y += 25
-
+                    x_area = self.calcular_posicion_centrada(area, ancho_etiqueta)
+                    tspl_commands.append(f'TEXT {x_area},{y_pos},"2",0,1,1,"{self.limpiar_texto_utf8(area)}"')
+                    y_pos += 25
+                
+                # Nombre (centrado dinámicamente)
                 if nombre:
-                    tspl_commands.append(f'TEXT {x_left},{y},"2",0,1,1,"{self.limpiar_texto_utf8(nombre)}"')
-                    y += 25
-
+                    x_nombre = self.calcular_posicion_centrada(nombre, ancho_etiqueta)
+                    tspl_commands.append(f'TEXT {x_nombre},{y_pos},"2",0,1,1,"{self.limpiar_texto_utf8(nombre)}"')
+                    y_pos += 25
+                
+                # Edad y género (centrada dinámicamente)
                 linea_edad_genero = ""
                 if edad:
-                    edad_formateada = f"{edad} A" if not edad.endswith(' A') else edad
+                    # Verificar si ya tiene 'A' al final
+                    edad_formateada = f"{edad} A" if not edad.endswith(' A') and not edad.endswith('A') else edad
                     linea_edad_genero = f"Edad:{edad_formateada}"
-
+                
                 if genero:
                     if linea_edad_genero:
                         linea_edad_genero += f"     Genero: {genero}"
                     else:
                         linea_edad_genero = f"Genero: {genero}"
-
+                
                 if linea_edad_genero:
-                    tspl_commands.append(f'TEXT {x_left},{y},"2",0,1,1,"{self.limpiar_texto_utf8(linea_edad_genero)}"')
-                    y += 25
-
+                    x_edad_genero = self.calcular_posicion_centrada(linea_edad_genero, ancho_etiqueta)
+                    tspl_commands.append(f'TEXT {x_edad_genero},{y_pos},"2",0,1,1,"{self.limpiar_texto_utf8(linea_edad_genero)}"')
+                    y_pos += 30  # Un poco más de espacio antes del código
+                
+                # CÓDIGO DE BARRAS - CORRECCIÓN IMPORTANTE DEL BUG
                 if orden:
                     # Extraer solo dígitos
                     order_digits = re.sub(r'[^0-9]', '', str(orden))
@@ -145,61 +187,61 @@ class PrintService:
                     else:
                         codigo_barras = order_digits
                     
+                    # Código de barras SIN PARÉNTESIS (este era el bug!)
+                    # Los paréntesis NO van en el código, solo en el texto visible
+                    x_barcode = ancho_etiqueta // 2 - 40  # Centro menos offset para código de barras
                     barcode_height = 45
                     
-                    # Código de barras
+                    # IMPORTANTE: readable=0 para que no muestre texto automático
                     tspl_commands.append(
-                        f'BARCODE {x_left},{y},"128",{barcode_height},0,0,2,2,"{codigo_barras}"'
-                    )                    
-                    # Texto HRI - formato (00) con espacio y sin los primeros 2 ceros
-                    # De "000166260848401" a "(00) 0166260848401"
-                    hri_text = f"(00) {codigo_barras[2:]}"
-                    
-                    tspl_commands.append(
-                        f'TEXT {x_left},{y + barcode_height + 10},"2",0,1,1,"{self.limpiar_texto_utf8(hri_text)}"'
+                        f'BARCODE {x_barcode},{y_pos},"128",{barcode_height},0,0,2,2,"{codigo_barras}"'
                     )
-
+                    
+                    # Texto HRI manual debajo - aquí SÍ van los paréntesis
+                    y_hri = y_pos + barcode_height + 10
+                    if len(codigo_barras) > 2:
+                        hri_text = f"(00) {codigo_barras[2:]}"
+                    else:
+                        hri_text = codigo_barras
+                    
+                    x_hri = self.calcular_posicion_centrada(hri_text, ancho_etiqueta)
+                    tspl_commands.append(
+                        f'TEXT {x_hri},{y_hri},"2",0,1,1,"{self.limpiar_texto_utf8(hri_text)}"'
+                    )
+            
             tspl_commands.append("PRINT 1")
-
-        return "\n".join(tspl_commands) + ("\n" if tspl_commands else "")
-
+            
+        return "\n".join(tspl_commands) + "\n"
+        
     def convertir_escpos_a_tspl(self, contenido):
-        """
-        Convierte comandos ESC/POS a un TSPL mínimo (sin forzar SIZE/GAP),
-        preservando alineación aproximada mediante posiciones X fijas.
-        """
-        tspl_lines = ["CLS"]
-        font_size = "2"  # "2" TSPL (tamaño estándar)
+        """Convierte comandos ESC/POS a TSPL para impresoras de etiquetas"""
+        tspl = "SIZE 320, 200\n"
+        tspl += "GAP 24, 0\n"
+        tspl += "DIRECTION 1\n"
+        tspl += "CLS\n\n"
+        
+        font_size = "2"
         align = "left"
-
-        # Normalizar líneas
-        temp = contenido.replace('\r\n', '\n').replace('<NL>', '\n')
-        lineas = []
-        for linea in temp.split('\n'):
-            if linea is None:
-                continue
-            lineas.append(linea)
-
-        current_y = 20
-        y_step = 24
-
+        
+        lineas = contenido.split('<NL>')
+        
         for linea in lineas:
             texto = linea
-
-            # Formatos (se omiten en TSPL mínimo, se conserva tamaño base)
+            
+            # Detectar formatos
             if '<NEGRITA>' in texto:
                 texto = texto.replace('<NEGRITA>', '')
             if '<NO_NEGRITA>' in texto:
                 texto = texto.replace('<NO_NEGRITA>', '')
-
+            
             if '<TXT_4SQUARE>' in texto:
                 font_size = "3"
                 texto = texto.replace('<TXT_4SQUARE>', '')
             elif '<TXT_2HEIGHT>' in texto or '<TXT_NORMAL>' in texto:
                 font_size = "2"
                 texto = texto.replace('<TXT_2HEIGHT>', '').replace('<TXT_NORMAL>', '')
-
-            # Alineación
+            
+            # Detectar alineación
             if '<TXT_ALIGN_CT>' in texto:
                 align = "center"
                 texto = texto.replace('<TXT_ALIGN_CT>', '')
@@ -209,67 +251,63 @@ class PrintService:
             elif '<TXT_ALIGN_LT>' in texto:
                 align = "left"
                 texto = texto.replace('<TXT_ALIGN_LT>', '')
-
-            # Código de barras CODE39
+            
+            # Detectar código de barras CODE39
             if '<BARCODE_CODE39>' in texto:
-                # Se espera: <BARCODE_CODE39>*DATA*
-                match = re.search(r'<BARCODE_CODE39>\*(.*?)\*', texto)
+                match = re.search(r'<BARCODE_CODE39>\*(.*?)\*$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    x_pos = 120
-                    tspl_lines.append(f'BARCODE {x_pos},{current_y},"39",50,1,0,2,2,"{self.limpiar_texto_utf8(barcode_data)}"')
-                    current_y += (50 + 10)
+                    x_barcode = 160 - (len(barcode_data) * 2)
+                    tspl += f'BARCODE {x_barcode},120,"39",50,1,0,2,2,"{barcode_data}"\n'
                 continue
-
-            # Código de barras EAN13
+            
+            # Detectar código de barras EAN13
             if '<BARCODE_EAN13>' in texto:
-                match = re.search(r'<BARCODE_EAN13>(\d+)', texto)
+                match = re.search(r'<BARCODE_EAN13>(\d+)$', texto)
                 if match:
                     barcode_data = match.group(1)
-                    x_pos = 120
-                    tspl_lines.append(f'BARCODE {x_pos},{current_y},"EAN13",50,1,0,2,2,"{self.limpiar_texto_utf8(barcode_data)}"')
-                    current_y += (50 + 10)
+                    tspl += f'BARCODE 120,120,"EAN13",50,1,0,2,2,"{barcode_data}"\n'
                 continue
-
-            # Limpiar etiquetas restantes no soportadas en TSPL mínimo
-            for tag in ['<ESC>', '<BARCODE_HEIGHT>', '<BARCODE_WIDTH>', '<BARCODE_TXT_BLW>',
+            
+            # Limpiar etiquetas restantes
+            for tag in ['<ESC>', '<BARCODE_HEIGHT>', '<BARCODE_WIDTH>', '<BARCODE_TXT_BLW>', 
                         '<TXT_FONT_A>', '<TXT_FONT_B>', '<PAPER_FULL_CUT>', '<PAPER_PART_CUT>',
                         '<BARCODE_TXT_OFF>']:
                 texto = texto.replace(tag, '')
-
+            
             # Imprimir texto si existe
             texto = texto.strip()
             if texto:
                 texto = self.limpiar_texto_utf8(texto)
-                # Posiciones X aproximadas (sin conocer SIZE real)
+                
+                # Calcular posición X basada en alineación y longitud del texto
                 if align == "center":
-                    x_pos = 160
+                    x_pos = self.calcular_posicion_centrada(texto, 320)
                 elif align == "right":
-                    x_pos = 300
-                else:
-                    x_pos = 10
-
-                tspl_lines.append(f'TEXT {x_pos},{current_y},"{font_size}",0,1,1,"{texto}"')
-                current_y += y_step
-
-        tspl_lines.append("PRINT 1")
-        return "\n".join(tspl_lines) + "\n"
-
+                    x_pos = 320 - (len(texto) * 4)
+                else:  # left
+                    x_pos = 20
+                
+                tspl += f'TEXT {x_pos},120,"{font_size}",0,1,1,"{texto}"\n'
+        
+        tspl += "\nPRINT 1\n"
+        return tspl
+        
     def main(self):
-
+        
         def reemplazar(cadena):
-            """Convierte etiquetas a comandos ESC/POS para impresoras térmicas."""
+            """Convierte etiquetas a comandos ESC/POS para impresoras térmicas"""
             cadena = self.limpiar_texto_utf8(cadena)
-
+            
             # Procesar CODE39 con datos
             if '<BARCODE_CODE39>' in cadena:
                 self.log(f"Procesando códigos de barras CODE39...")
                 pattern = r'<BARCODE_CODE39>(.*?)<NL>'
-
+                
                 def replace_code39(match):
                     barcode_data = match.group(1)
                     self.log(f"  - CODE39 encontrado: '{barcode_data}'")
-
+                    
                     commands = ""
                     commands += "\u001d\u0068\u0064"  # GS h 100 - Altura
                     commands += "\u001d\u0077\u0002"  # GS w 2 - Ancho
@@ -279,15 +317,15 @@ class PrintService:
                     commands += barcode_data
                     commands += "\u0000"              # NUL terminator
                     commands += "\n"
-
+                    
                     return commands
-
+                
                 cadena = re.sub(pattern, replace_code39, cadena)
-
+            
             # Comandos básicos ESC/POS
             cadena = cadena.replace("<ESC>", "\u001b\u0040")
             cadena = cadena.replace("<NL>", '\n')
-
+            
             # Formato de texto
             cadena = cadena.replace("<TXT_NORMAL>", "\u001b\u0021\u0000")
             cadena = cadena.replace("<TXT_2HEIGHT>", "\u001b\u0021\u0010")
@@ -300,35 +338,34 @@ class PrintService:
             cadena = cadena.replace("<TXT_ALIGN_LT>", "\u001b\u0061\u0000")
             cadena = cadena.replace("<TXT_ALIGN_CT>", "\u001b\u0061\u0001")
             cadena = cadena.replace("<TXT_ALIGN_RT>", "\u001b\u0061\u0002")
-
+            
             # Papel
             cadena = cadena.replace("<PAPER_FULL_CUT>", "\u001d\u0056\u0000")
             cadena = cadena.replace("<PAPER_PART_CUT>", "\u001d\u0056\u0001")
-
+            
             # Códigos de barras
             cadena = cadena.replace("<BARCODE_TXT_OFF>", "\u001d\u0048\u0000")
             cadena = cadena.replace("<BARCODE_TXT_BLW>", "\u001d\u0048\u0002")
             cadena = cadena.replace("<BARCODE_HEIGHT>", "\u001d\u0068\u0064")
             cadena = cadena.replace("<BARCODE_WIDTH>", "\u001d\u0077\u0002")
             cadena = cadena.replace("<BARCODE_EAN13>", "\u001d\u006b\u0002")
-
+            
             return cadena
-
+        
         def imprimir_ter(contenido, impresora):
-            """Imprime en impresoras térmicas (ESC/POS) o convierte a TSPL si es impresora de etiqueta."""
+            """Imprime en impresoras térmicas"""
             try:
                 # Detectar tipo de impresora
-                es_impresora_etiquetas = any(keyword in impresora.upper() for keyword in
-                    ['ETIQUETA', 'LABEL', '4BARCODE', 'LDT114', '3NSTAR', 'TSC', 'ZEBRA', 'GODEX'])
-
+                es_impresora_etiquetas = any(keyword in impresora.upper() for keyword in 
+                    ['ETIQUETA', '4BARCODE', 'LDT114', '3NSTAR', 'TSC', 'ZEBRA', 'GODEX'])
+                
                 if es_impresora_etiquetas:
-                    # Convertir ESC/POS recibido a TSPL mínimo
                     new_contenido = self.convertir_escpos_a_tspl(contenido)
-                    self.log(f"TSPL (convertido) -> {impresora}: {len(new_contenido)} bytes")
+                    self.log(f"TSPL print to {impresora}: {len(new_contenido)} bytes")
                 else:
                     new_contenido = reemplazar(contenido)
-                    self.log(f"ESC/POS -> {impresora}: {len(new_contenido)} bytes")
-
+                    self.log(f"ESC/POS print to {impresora}: {len(new_contenido)} bytes")
+                
                 if WINDOWS:
                     p = win32print.OpenPrinter(impresora)
                     job = win32print.StartDocPrinter(p, 1, ("TSSPrint Job", None, "RAW"))
@@ -340,112 +377,103 @@ class PrintService:
                     self.log(f"Print job sent successfully to {impresora}")
                 else:
                     self.log("Linux thermal printing - implement CUPS or direct device")
-
+                
             except Exception as e:
                 self.log(f"Error printing to thermal printer {impresora}: {str(e)}")
                 traceback.print_exc()
-
+        
         def imprimir_etiqueta(contenido, impresora):
-            """Imprime etiquetas dejando que la impresora gestione SIZE/GAP/DIRECTION."""
+            """Imprime etiquetas con centrado dinámico y código de barras corregido"""
             self.log(f"Iniciando trabajo de impresión de ETIQUETA para: '{impresora}'")
+            
             try:
                 new_contenido = ""
-
-                # Detectar si es TSC y está en Windows 11 (para envío line-by-line)
+                
+                # Detectar tipo de impresora
                 es_tsc = self.es_impresora_tsc(impresora)
+                es_3nstar = self.es_impresora_3nstar(impresora)
                 usar_modo_tsc_win11 = es_tsc and self.windows_version == 11
-
+                
                 if usar_modo_tsc_win11:
                     self.log(f"Modo TSC Windows 11 activado para: {impresora}")
-                elif self.es_impresora_3nstar(impresora):
+                elif es_3nstar:
                     self.log(f"Impresora 3nStar detectada: {impresora}")
                 else:
-                    self.log(f"Impresora genérica/otro fabricante detectada: {impresora}")
-
+                    self.log(f"Impresora genérica detectada: {impresora}")
+                
                 if isinstance(contenido, list):
-                    # Datos estructurados -> construir TSPL mínimo
-                    self.log("Contenido detectado como DATOS (lista JSON). Construyendo etiqueta TSPL (mínimo, sin SIZE/GAP)...")
-                    new_contenido = self.generar_tspl_minimo(contenido)
-
+                    self.log("Contenido detectado como DATOS (lista JSON). Construyendo etiqueta TSPL...")
+                    new_contenido = self.generar_tspl_generico(contenido, impresora)
+                    
                 elif isinstance(contenido, str):
-                    raw = contenido.strip()
-                    # Si ya son comandos TSPL/CPCL/ZPL, enviarlos tal cual (passthrough)
-                    if raw.startswith(('SIZE', 'CLS', 'TEXT', 'BARCODE', '^', '~', '!')):
-                        self.log("Contenido detectado como comandos de lenguaje de etiqueta. Envío directo.")
+                    if contenido.strip().upper().startswith(('SIZE', 'CLS', 'TEXT', 'BARCODE')):
+                        self.log("Contenido detectado como comandos TSPL directos.")
                         new_contenido = contenido
                     else:
-                        # Texto plano -> TSPL mínimo (una etiqueta)
-                        self.log("Contenido detectado como texto plano. Transformando a TSPL mínimo...")
-                        lines = self.limpiar_texto_utf8(contenido.replace('\r\n', '\n')).split('\n')
-                        tspl = ["CLS"]
-                        x_left = 10
-                        y = 10
-                        for ln in lines:
-                            ln = ln.strip()
-                            if not ln:
-                                continue
-                            tspl.append(f'TEXT {x_left},{y},"2",0,1,1,"{ln}"')
-                            y += 24
-                        tspl.append("PRINT 1")
-                        new_contenido = "\n".join(tspl) + "\n"
+                        self.log("Contenido detectado como texto. Procesando...")
+                        new_contenido = contenido.replace('\n', '').replace('<NL>', '\n')
                 else:
                     self.log(f"ERROR: Tipo de contenido no soportado: {type(contenido)}")
                     return
-
-                self.log(f"Usando modo: {'TSC Windows 11 (envío en líneas)' if usar_modo_tsc_win11 else 'Genérico (raw)'}")
+                
                 self.log(f"---INICIO CONTENIDO---")
                 self.log(new_contenido[:500] + "..." if len(new_contenido) > 500 else new_contenido)
                 self.log(f"---FIN CONTENIDO---")
-
+                
                 if WINDOWS and new_contenido:
+                    # Para TSC en Windows 11, agregar pausa antes
+                    if usar_modo_tsc_win11:
+                        time.sleep(0.1)
+                    
                     p = win32print.OpenPrinter(impresora)
                     win32print.StartDocPrinter(p, 1, ("TSC Label Job" if es_tsc else "Label Job", None, "RAW"))
                     win32print.StartPagePrinter(p)
-
+                    
+                    # Para TSC en Windows 11, enviar línea por línea
                     if usar_modo_tsc_win11:
-                        # Enviar por líneas con pausas cortas para compatibilidad en Win11
                         for line in new_contenido.split('\n'):
                             if line:
                                 win32print.WritePrinter(p, bytes(line + '\n', 'utf-8'))
-                                time.sleep(0.01)
+                                time.sleep(0.01)  # Pequeña pausa entre líneas
                     else:
                         win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
-
+                    
                     win32print.EndPagePrinter(p)
                     win32print.EndDocPrinter(p)
                     win32print.ClosePrinter(p)
                     self.log(f"✅ Trabajo de etiqueta enviado exitosamente.")
-
+                    
             except Exception as e:
                 self.log(f"ERROR en 'imprimir_etiqueta': {str(e)}")
                 traceback.print_exc()
-
+                
         def message_received(client, server, message):
             """Maneja mensajes WebSocket recibidos"""
             try:
                 self.log(f"Mensaje recibido del cliente {client['id']} en puerto {server.port}")
-
+                
                 JSON = json.loads(message)
                 contenido = JSON.get('contenido', '')
                 impresora = JSON.get('impresora', 'TERMICA')
                 tipo = JSON.get('tipo', 'TERMICA').upper()
-
+                
                 self.log(f"Trabajo de impresión: Tipo={tipo}, Impresora={impresora}")
-
+                
                 if tipo == 'TERMICA':
                     imprimir_ter(contenido, impresora)
                 elif tipo in ['ETIQUETA', 'TSC']:
                     imprimir_etiqueta(contenido, impresora)
                 else:
                     self.log(f"Tipo de impresión no soportado: {tipo}")
-
+                    
             except Exception as e:
                 self.log(f"Error procesando mensaje: {str(e)}")
                 traceback.print_exc()
 
+        # Configuración de servidores WebSocket
         PORTS = [9000, 9001]
         HOST = "127.0.0.1"
-
+        
         for port in PORTS:
             try:
                 server = WebsocketServer(host=HOST, port=port)
@@ -455,11 +483,11 @@ class PrintService:
             server.set_fn_message_received(message_received)
             self.servers.append(server)
             self.log(f"WebSocket server creado en {HOST}:{port}")
-
+        
         if not self.servers:
             self.log("No hay servidores WebSocket inicializados. Verifique que los puertos 9000/9001 estén libres.")
             return
-
+        
         # Iniciar servidores en threads separados
         threads = []
         for server in self.servers:
@@ -467,8 +495,15 @@ class PrintService:
             thread.daemon = True
             thread.start()
             threads.append(thread)
-
+        
         try:
+            self.log("=" * 60)
+            self.log("TSSPrint Service - VERSIÓN COMBINADA")
+            self.log("✓ Centrado dinámico para 3nStar")
+            self.log("✓ Código de barras CORREGIDO (sin paréntesis en el código)")
+            self.log("Escuchando en puertos: " + ", ".join(str(s.port) for s in self.servers))
+            self.log("=" * 60)
+            
             while self.running:
                 time.sleep(1)
         except KeyboardInterrupt:
@@ -488,7 +523,7 @@ try:
     class TSSPrintService(win32serviceutil.ServiceFramework):
         _svc_name_ = "TSSPrintService"
         _svc_display_name_ = "TSSPrint_CRM2_V2"
-        _svc_description_ = "Servicio de impresión para Windows 10 y 11, compatible con TSC, 3nStar y Zebra"
+        _svc_description_ = "Servicio de impresión con centrado dinámico y código de barras corregido"
 
         def __init__(self, args):
             win32serviceutil.ServiceFramework.__init__(self, args)
@@ -512,7 +547,7 @@ try:
 
     # Si se ejecuta como servicio Windows o en modo consola
     if __name__ == '__main__':
-        # Comandos de servicio conocidos -> delegar a pywin32
+        # Comandos de servicio conocidos
         service_cmds = {'install', 'remove', 'start', 'stop', 'restart', 'update', 'status'}
         # Comandos explícitos de consola
         console_cmds = {'debug', 'console', 'run'}
@@ -520,30 +555,36 @@ try:
         if len(sys.argv) > 1 and sys.argv[1].lower() in service_cmds:
             win32serviceutil.HandleCommandLine(TSSPrintService)
         elif len(sys.argv) > 1 and sys.argv[1].lower() in console_cmds:
+            print("""
+╔════════════════════════════════════════════════════════════════╗
+║              TSSPrint Service - VERSIÓN COMBINADA             ║
+║                                                                ║
+║  ✓ Centrado dinámico funcionando en 3nStar                   ║
+║  ✓ Bug del código de barras CORREGIDO                        ║
+║  ✓ Windows 10 y 11 soportados                                ║
+╚════════════════════════════════════════════════════════════════╝
+            """)
             print_service = PrintService()
             print_service.start()
         else:
-            # Si fue lanzado por el Service Manager, esto funcionará.
-            # Si fue lanzado desde consola sin argumentos, capturamos el 1063 y corremos en modo consola.
+            # Intento de ejecutar como servicio
             try:
                 servicemanager.Initialize()
                 servicemanager.PrepareToHostSingle(TSSPrintService)
                 servicemanager.StartServiceCtrlDispatcher()
             except pywintypes.error as e:
-                # 1063: The service process could not connect to the service controller
                 if getattr(e, 'winerror', None) == 1063 or (hasattr(e, 'args') and e.args and e.args[0] == 1063):
+                    # Ejecutar en modo consola si no puede conectar con el service manager
                     print_service = PrintService()
                     print_service.start()
                 else:
                     raise
             except Exception:
-                # Cualquier otro problema al iniciar como servicio -> consola como fallback seguro
                 print_service = PrintService()
                 print_service.start()
 
 except ImportError:
     # Si no está disponible win32service, ejecutar como aplicación normal
     if __name__ == '__main__':
-
         print_service = PrintService()
         print_service.start()

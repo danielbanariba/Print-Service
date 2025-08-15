@@ -61,8 +61,8 @@ class PrintService:
         """Limpia caracteres problemáticos UTF-8 para impresoras térmicas/etiquetas."""
         replacements = {
             '–': '-', '—': '-',
-            '"': '"', '"': '"',
-            ''': "'", ''': "'",
+            '“': '"', '”': '"',
+            '‘': "'", '’': "'",
             '…': '...', '°': 'o', '±': '+/-', '×': 'x', '÷': '/',
             '€': 'EUR', '£': 'GBP', '¥': 'YEN', '©': '(c)', '®': '(r)', '™': 'TM',
             '•': '*', '►': '>', '◄': '<', '▲': '^', '▼': 'v'
@@ -90,7 +90,79 @@ class PrintService:
         nstar_keywords = ['3NSTAR', 'LDT114', 'LDT-114', '3N-STAR']
         return any(keyword in nombre_impresora.upper() for keyword in nstar_keywords)
 
+    def generar_tspl_minimo(self, contenido):
+        """
+        Genera TSPL sin forzar SIZE/GAP/DIRECTION/etc.
+        Solo CLS + TEXT/BARCODE, dejando que la impresora use sus valores predefinidos.
+        """
+        tspl_commands = []
 
+        if isinstance(contenido, list):
+            for idx, item in enumerate(contenido):
+                if idx > 0:
+                    tspl_commands.append("PRINT 1")
+                tspl_commands.append("CLS")
+
+                nombre = str(item.get("nombre", "")).strip()[:30]
+                orden = str(item.get("orden", "")).strip()
+                area = str(item.get("area", "")).strip()[:30]
+                genero = str(item.get("genero", "")).strip()
+                edad = str(item.get("edad", "")).strip()
+
+                x_left = 10
+                y = 10
+
+                if area:
+                    tspl_commands.append(f'TEXT {x_left},{y},"2",0,1,1,"{self.limpiar_texto_utf8(area)}"')
+                    y += 25
+
+                if nombre:
+                    tspl_commands.append(f'TEXT {x_left},{y},"2",0,1,1,"{self.limpiar_texto_utf8(nombre)}"')
+                    y += 25
+
+                linea_edad_genero = ""
+                if edad:
+                    edad_formateada = f"{edad} A" if not edad.endswith(' A') else edad
+                    linea_edad_genero = f"Edad:{edad_formateada}"
+
+                if genero:
+                    if linea_edad_genero:
+                        linea_edad_genero += f"     Genero: {genero}"
+                    else:
+                        linea_edad_genero = f"Genero: {genero}"
+
+                if linea_edad_genero:
+                    tspl_commands.append(f'TEXT {x_left},{y},"2",0,1,1,"{self.limpiar_texto_utf8(linea_edad_genero)}"')
+                    y += 25
+
+                if orden:
+                    # Negocio: el sticker debe codificar el número de TUBO.
+                    # Si viene 'tubo' en el item, usarlo. Si no, derivar: tubo = orden + '01'.
+                    order_digits = re.sub(r'[^0-9]', '', str(orden))
+                    tubo_digits = re.sub(r'[^0-9]', '', str(item.get('tubo', '')))
+
+                    if not tubo_digits:
+                        if len(order_digits) == 13:
+                            tubo_digits = order_digits + '01'
+                        elif len(order_digits) == 15 and order_digits.endswith('01'):
+                            tubo_digits = order_digits
+                        else:
+                            # Fallback: si no cumple el patrón esperado, usar orden tal cual
+                            tubo_digits = order_digits
+
+                    barcode_height = 45
+                    # BARCODE con HRI nativo desactivado (readable=0) y HRI manual debajo.
+                    tspl_commands.append(
+                        f'BARCODE {x_left},{y},"128",{barcode_height},0,0,2,2,"{tubo_digits}"'
+                    )
+                    if tubo_digits:
+                        tspl_commands.append(
+                            f'TEXT {x_left},{y + barcode_height + 10},"2",0,1,1,"{self.limpiar_texto_utf8(tubo_digits)}"'
+                        )
+
+            tspl_commands.append("PRINT 1")
+
+        return "\n".join(tspl_commands) + ("\n" if tspl_commands else "")
 
     def convertir_escpos_a_tspl(self, contenido):
         """
@@ -146,6 +218,7 @@ class PrintService:
                 if match:
                     barcode_data = match.group(1)
                     x_pos = 120
+                    # Y pos
                     tspl_lines.append(f'BARCODE {x_pos},{current_y},"39",50,1,0,2,2,"{self.limpiar_texto_utf8(barcode_data)}"')
                     current_y += (50 + 10)
                 continue
@@ -275,71 +348,79 @@ class PrintService:
                 traceback.print_exc()
 
         def imprimir_etiqueta(contenido, impresora):
-            """
-            Como imprimir_ZPL del código de producción - simple y directo.
-            """
+            """Imprime etiquetas dejando que la impresora gestione SIZE/GAP/DIRECTION."""
+            self.log(f"Iniciando trabajo de impresión de ETIQUETA para: '{impresora}'")
             try:
                 new_contenido = ""
-                
-                if isinstance(contenido, str):
-                    # EXACTO como el código de producción
-                    new_contenido = contenido.replace('\n', '')
-                    new_contenido = new_contenido.replace('<NL>', '\n')
-                    
-                elif isinstance(contenido, list):
-                    # Si viene JSON, generar comandos SIMPLES
-                    # SIN valores hardcodeados, dejar que la impresora use sus defaults
-                    comandos = []
-                    for item in contenido:
-                        comandos.append("CLS")
-                        
-                        # Solo los campos básicos
-                        if item.get("area"):
-                            comandos.append(f'TEXT 10,10,"0",0,1,1,"{item.get("area")[:30]}"')
-                        if item.get("nombre"):
-                            comandos.append(f'TEXT 10,30,"0",0,1,1,"{item.get("nombre")[:30]}"')
-                        
-                        # Edad y género en una línea
-                        edad = item.get("edad", "")
-                        genero = item.get("genero", "")
-                        if edad or genero:
-                            linea = f"Edad:{edad} A     Genero:{genero}" if edad and genero else f"Edad:{edad} A" if edad else f"Genero:{genero}"
-                            comandos.append(f'TEXT 10,50,"0",0,1,1,"{linea}"')
-                        
-                        # Código de barras
-                        orden = item.get("orden", "")
-                        if orden:
-                            codigo = re.sub(r'[^0-9]', '', str(orden))
-                            if not codigo.endswith('01'):
-                                codigo = codigo + '01'
-                            
-                            # Código de barras sin especificar altura/ancho - usar defaults
-                            comandos.append(f'BARCODE 10,70,"128",50,1,0,2,2,"{codigo}"')
-                            # HRI manual
-                            hri = f"(00) {codigo[2:]}" if len(codigo) > 2 else codigo
-                            comandos.append(f'TEXT 10,125,"0",0,1,1,"{hri}"')
-                        
-                        comandos.append("PRINT 1")
-                    
-                    new_contenido = "\n".join(comandos)
+
+                # Detectar si es TSC y está en Windows 11 (para envío line-by-line)
+                es_tsc = self.es_impresora_tsc(impresora)
+                usar_modo_tsc_win11 = es_tsc and self.windows_version == 11
+
+                if usar_modo_tsc_win11:
+                    self.log(f"Modo TSC Windows 11 activado para: {impresora}")
+                elif self.es_impresora_3nstar(impresora):
+                    self.log(f"Impresora 3nStar detectada: {impresora}")
                 else:
-                    self.log(f"Tipo no soportado: {type(contenido)}")
+                    self.log(f"Impresora genérica/otro fabricante detectada: {impresora}")
+
+                if isinstance(contenido, list):
+                    # Datos estructurados -> construir TSPL mínimo
+                    self.log("Contenido detectado como DATOS (lista JSON). Construyendo etiqueta TSPL (mínimo, sin SIZE/GAP)...")
+                    new_contenido = self.generar_tspl_minimo(contenido)
+
+                elif isinstance(contenido, str):
+                    raw = contenido.strip()
+                    # Si ya son comandos TSPL/CPCL/ZPL, enviarlos tal cual (passthrough)
+                    if raw.startswith(('SIZE', 'CLS', 'TEXT', 'BARCODE', '^', '~', '!')):
+                        self.log("Contenido detectado como comandos de lenguaje de etiqueta. Envío directo.")
+                        new_contenido = contenido
+                    else:
+                        # Texto plano -> TSPL mínimo (una etiqueta)
+                        self.log("Contenido detectado como texto plano. Transformando a TSPL mínimo...")
+                        lines = self.limpiar_texto_utf8(contenido.replace('\r\n', '\n')).split('\n')
+                        tspl = ["CLS"]
+                        x_left = 10
+                        y = 10
+                        for ln in lines:
+                            ln = ln.strip()
+                            if not ln:
+                                continue
+                            tspl.append(f'TEXT {x_left},{y},"2",0,1,1,"{ln}"')
+                            y += 24
+                        tspl.append("PRINT 1")
+                        new_contenido = "\n".join(tspl) + "\n"
+                else:
+                    self.log(f"ERROR: Tipo de contenido no soportado: {type(contenido)}")
                     return
 
-                # Enviar a imprimir - EXACTO como el código de producción
+                self.log(f"Usando modo: {'TSC Windows 11 (envío en líneas)' if usar_modo_tsc_win11 else 'Genérico (raw)'}")
+                self.log(f"---INICIO CONTENIDO---")
+                self.log(new_contenido[:500] + "..." if len(new_contenido) > 500 else new_contenido)
+                self.log(f"---FIN CONTENIDO---")
+
                 if WINDOWS and new_contenido:
                     p = win32print.OpenPrinter(impresora)
-                    win32print.SetDefaultPrinter(impresora)
-                    imp = win32print.GetPrinter(p, 2)
-                    job = win32print.StartDocPrinter(p, 1, ("printer job", None, "RAW"))
+                    win32print.StartDocPrinter(p, 1, ("TSC Label Job" if es_tsc else "Label Job", None, "RAW"))
                     win32print.StartPagePrinter(p)
-                    win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
+
+                    if usar_modo_tsc_win11:
+                        # Enviar por líneas con pausas cortas para compatibilidad en Win11
+                        for line in new_contenido.split('\n'):
+                            if line:
+                                win32print.WritePrinter(p, bytes(line + '\n', 'utf-8'))
+                                time.sleep(0.01)
+                    else:
+                        win32print.WritePrinter(p, bytes(new_contenido, 'utf-8'))
+
                     win32print.EndPagePrinter(p)
                     win32print.EndDocPrinter(p)
                     win32print.ClosePrinter(p)
+                    self.log(f"✅ Trabajo de etiqueta enviado exitosamente.")
 
             except Exception as e:
-                self.log(f"Error: {str(e)}")
+                self.log(f"ERROR en 'imprimir_etiqueta': {str(e)}")
+                traceback.print_exc()
 
         def message_received(client, server, message):
             """Maneja mensajes WebSocket recibidos"""
@@ -364,8 +445,8 @@ class PrintService:
                 self.log(f"Error procesando mensaje: {str(e)}")
                 traceback.print_exc()
 
-        # Configuración de servidores WebSocket - AHORA SOPORTA AMBOS PUERTOS
-        PORTS = [9000, 9001]  # Windows 10 usa 9000, Windows 11 usa 9001
+        # Configuración de servidores WebSocket
+        PORTS = [9000, 9001]
         HOST = "127.0.0.1"
 
         for port in PORTS:
@@ -443,10 +524,10 @@ try:
             win32serviceutil.HandleCommandLine(TSSPrintService)
         elif len(sys.argv) > 1 and sys.argv[1].lower() in console_cmds:
             print("""
-        ╔════════════════════════════════════════════════════╗
+        ╔═══════════════════════════════════════════════════════╗
         ║         TSC Windows 11 Fix - Print Service            ║
         ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚════════════════════════════════════════════════════╝
+        ╚═══════════════════════════════════════════════════════╝
             """)
             print_service = PrintService()
             print_service.start()
@@ -461,10 +542,10 @@ try:
                 # 1063: The service process could not connect to the service controller
                 if getattr(e, 'winerror', None) == 1063 or (hasattr(e, 'args') and e.args and e.args[0] == 1063):
                     print("""
-        ╔════════════════════════════════════════════════════╗
+        ╔═══════════════════════════════════════════════════════╗
         ║      Ejecutando en modo consola (no SCM detectado)    ║
         ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚════════════════════════════════════════════════════╝
+        ╚═══════════════════════════════════════════════════════╝
                     """)
                     print_service = PrintService()
                     print_service.start()
@@ -473,10 +554,10 @@ try:
             except Exception:
                 # Cualquier otro problema al iniciar como servicio -> consola como fallback seguro
                 print("""
-        ╔════════════════════════════════════════════════════╗
+        ╔═══════════════════════════════════════════════════════╗
         ║      Ejecutando en modo consola (fallback general)    ║
         ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚════════════════════════════════════════════════════╝
+        ╚═══════════════════════════════════════════════════════╝
                 """)
                 print_service = PrintService()
                 print_service.start()
@@ -485,10 +566,10 @@ except ImportError:
     # Si no está disponible win32service, ejecutar como aplicación normal
     if __name__ == '__main__':
         print("""
-        ╔════════════════════════════════════════════════════╗
+        ╔═══════════════════════════════════════════════════════╗
         ║         TSC Windows 11 Fix - Print Service            ║
         ║           Version: 2025-TSC-WIN11-FIX                 ║
-        ╚════════════════════════════════════════════════════╝
+        ╚═══════════════════════════════════════════════════════╝
         """)
 
         print_service = PrintService()
