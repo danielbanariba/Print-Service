@@ -17,8 +17,7 @@ import win32print
 from websocket_server import WebsocketServer
 
 # INSTALAR PAQUETES NECESARIOS ARRIBA IMPORTADOS
-# pip install pywin32
-# pip install websocket-server
+# pip install pywin32 websocket-server pyinstaller
 
 try:
     WINDOWS = True

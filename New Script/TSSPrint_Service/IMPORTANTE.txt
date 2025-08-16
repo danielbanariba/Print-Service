@@ -1,0 +1,19 @@
+Si al momento de imprimir los stickers en la impresora TSC les sale:  
+- Cortado
+- incompleto
+- Con desplazamiento mas para arriba o mas para abajo
+Lo que tiene que hacer es lo siguiente.
+
+1) descargar el programa DiagTool_V1.64 en el siguiente link.
+https://easyscan.com.hk/download/tsc-diagnostic-tool-v1-64/
+Lo que hace este programa es mirar los valores que tiene configurado en la impresora
+
+2) Tiene que verificar los valores, donde se tiene que fijar mas es en la parte donde dice ShiftX y ShiftY,  tiene que estar en valor "0", si tiene otro valor diferente a 0, cambiarlo y ponerle 0.
+
+3) Si aun cambiando esos valores, no le da centrado, lo que tiene que hacer es ir jugando con los valores hasta que quede centrado.
+
+4) Si se siente confundido, o perdido, puede guiarse mejor con los siguientes videos.
+
+https://youtu.be/B0BT7YZXgP0?si=-xHCgfA1wTEmlZJ-
+
+https://youtu.be/AGiiMNq3q8M?si=rBtOb-UIzQOnYO4F
