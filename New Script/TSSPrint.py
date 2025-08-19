@@ -53,7 +53,11 @@ class PrintService:
 
     def start(self):
         self.running = True
-        self.main()
+        try:
+            self.main()
+        except Exception as e:
+            self.log(f"Error en start(): {str(e)}")
+            raise
 
     def stop(self):
         self.running = False
@@ -494,11 +498,26 @@ try:
                 self.print_service.stop()
 
         def SvcDoRun(self):
-            servicemanager.LogMsg(
-                servicemanager.EVENTLOG_INFORMATION_TYPE,
-                servicemanager.PYS_SERVICE_STARTED,
-                (self._svc_name_, '')
-            )
+            try:
+                servicemanager.LogMsg(
+                    servicemanager.EVENTLOG_INFORMATION_TYPE,
+                    servicemanager.PYS_SERVICE_STARTED,
+                    (self._svc_name_, '')
+                )
+                
+                # Crear e inicializar el servicio de impresión
+                self.print_service = PrintService()
+                self.print_service.log("Servicio TSSPrint iniciado correctamente")
+                
+                # Iniciar el servicio
+                self.print_service.start()
+                
+                # Esperar hasta que se solicite parar
+                win32event.WaitForSingleObject(self.hWaitStop, win32event.INFINITE)
+                
+            except Exception as e:
+                servicemanager.LogErrorMsg(f"Error en SvcDoRun: {str(e)}")
+                self.SvcStop()
 
     # Si se ejecuta como servicio Windows o en modo consola
     if __name__ == '__main__':
@@ -508,26 +527,52 @@ try:
         console_cmds = {'debug', 'console', 'run'}
 
         if len(sys.argv) > 1 and sys.argv[1].lower() in service_cmds:
-            win32serviceutil.HandleCommandLine(TSSPrintService)
+            # Ejecutar comandos de servicio
+            try:
+                win32serviceutil.HandleCommandLine(TSSPrintService)
+            except Exception as e:
+                print(f"Error en comando de servicio: {e}")
+                sys.exit(1)
         elif len(sys.argv) > 1 and sys.argv[1].lower() in console_cmds:
+            # Ejecutar en modo consola
+            print("Ejecutando en modo consola...")
             print_service = PrintService()
-            print_service.start()
+            try:
+                print_service.start()
+            except KeyboardInterrupt:
+                print("Deteniendo servicio...")
+                print_service.stop()
         else:
             # Intento de ejecutar como servicio
             try:
+                # Verificar si estamos corriendo como servicio
                 servicemanager.Initialize()
                 servicemanager.PrepareToHostSingle(TSSPrintService)
                 servicemanager.StartServiceCtrlDispatcher()
             except pywintypes.error as e:
-                if getattr(e, 'winerror', None) == 1063 or (hasattr(e, 'args') and e.args and e.args[0] == 1063):
-                    # Ejecutar en modo consola si no puede conectar con el service manager
+                error_code = getattr(e, 'winerror', None) or (e.args[0] if e.args else None)
+                if error_code == 1063:
+                    # Error 1063: El servicio no está siendo ejecutado por Service Control Manager
+                    # Ejecutar en modo consola
+                    print("Ejecutando en modo consola (no iniciado como servicio)...")
                     print_service = PrintService()
-                    print_service.start()
+                    try:
+                        print_service.start()
+                    except KeyboardInterrupt:
+                        print("Deteniendo servicio...")
+                        print_service.stop()
                 else:
+                    print(f"Error del servicio: {e}")
                     raise
-            except Exception:
+            except Exception as e:
+                print(f"Error general: {e}")
+                # Como último recurso, ejecutar en modo consola
                 print_service = PrintService()
-                print_service.start()
+                try:
+                    print_service.start()
+                except KeyboardInterrupt:
+                    print("Deteniendo servicio...")
+                    print_service.stop()
 
 except ImportError:
     # Si no está disponible win32service, ejecutar como aplicación normal
